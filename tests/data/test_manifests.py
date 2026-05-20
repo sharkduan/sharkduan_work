@@ -103,6 +103,51 @@ class RawManifestValidationTests(unittest.TestCase):
             self.assertEqual(envelope.payload.extra_files, ("covbinder_in_pdb/extra.csv",))
             self.assertTrue(envelope.receipt.ok)
 
+    def test_malformed_file_byte_count_is_structured_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp)
+            source_root = raw_root / "covbinder_in_pdb"
+            checksum = write_text(source_root / "records.csv", "id,value\n1,ok\n")
+            write_manifest(
+                source_root,
+                [
+                    {
+                        "path": "records.csv",
+                        "role": "records",
+                        "bytes": "not-an-integer",
+                        "sha256": checksum,
+                    }
+                ],
+            )
+
+            envelope = validate_raw_manifests(raw_root)
+
+            self.assertFalse(envelope.receipt.ok)
+            self.assertEqual(envelope.receipt.errors[0].code, "RAW_MANIFEST_FILE_BYTES_INVALID")
+
+    def test_complete_for_v1_must_be_boolean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp)
+            source_root = raw_root / "covbinder_in_pdb"
+            checksum = write_text(source_root / "records.csv", "id,value\n1,ok\n")
+            write_manifest(
+                source_root,
+                [
+                    {
+                        "path": "records.csv",
+                        "role": "records",
+                        "bytes": (source_root / "records.csv").stat().st_size,
+                        "sha256": checksum,
+                    }
+                ],
+                complete_for_v1="false",
+            )
+
+            envelope = validate_raw_manifests(raw_root)
+
+            self.assertFalse(envelope.receipt.ok)
+            self.assertEqual(envelope.receipt.errors[0].code, "RAW_MANIFEST_COMPLETE_FOR_V1_INVALID")
+
 
 if __name__ == "__main__":
     unittest.main()

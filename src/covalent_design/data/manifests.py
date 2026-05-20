@@ -90,6 +90,16 @@ def validate_raw_manifests(raw_root: Path) -> ContractEnvelope[RawSourceInventor
                 )
             )
             continue
+        if not isinstance(payload, dict):
+            errors.append(
+                ContractErrorInfo(
+                    code="RAW_MANIFEST_ROOT_NOT_OBJECT",
+                    owner="data",
+                    message="Raw manifest root must be a JSON object",
+                    location=_display_path(manifest_path, raw_root),
+                )
+            )
+            continue
 
         source_manifest = _parse_manifest(manifest_path, raw_root, payload, errors)
         if source_manifest is None:
@@ -145,6 +155,17 @@ def _parse_manifest(
                 code="RAW_MANIFEST_MISSING_REQUIRED_FIELD",
                 owner="data",
                 message=f"Missing required manifest fields: {', '.join(missing)}",
+                location=_display_path(manifest_path, raw_root),
+            )
+        )
+        return None
+
+    if not isinstance(payload["complete_for_v1"], bool):
+        errors.append(
+            ContractErrorInfo(
+                code="RAW_MANIFEST_COMPLETE_FOR_V1_INVALID",
+                owner="data",
+                message="complete_for_v1 must be a JSON boolean",
                 location=_display_path(manifest_path, raw_root),
             )
         )
@@ -224,11 +245,23 @@ def _parse_file_entry(
         )
         return None
 
+    byte_count = entry["bytes"]
+    if not isinstance(byte_count, int) or isinstance(byte_count, bool) or byte_count < 0:
+        errors.append(
+            ContractErrorInfo(
+                code="RAW_MANIFEST_FILE_BYTES_INVALID",
+                owner="data",
+                message="Manifest file bytes must be a non-negative integer",
+                location=location,
+            )
+        )
+        return None
+
     return RawManifestFile(
         source_database=source_database,
         path=path,
         role=str(entry["role"]),
-        bytes=int(entry["bytes"]),
+        bytes=byte_count,
         sha256=str(entry["sha256"]),
     )
 
