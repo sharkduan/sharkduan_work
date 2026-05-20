@@ -1,0 +1,33 @@
+name: Design change
+description: Propose a change to architecture, data contracts, model design, or evaluation semantics.
+title: "Design: "
+labels: ["design", "needs-adr-review"]
+body:
+  - type: textarea
+    id: decision
+    attributes:
+      label: Proposed decision
+      description: What should change?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is the current approach insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: List rejected options and trade-offs.
+    validations:
+      required: true
+  - type: textarea
+    id: adr
+    attributes:
+      label: ADR impact
+      description: Which existing ADRs are affected, and is a new ADR needed?
+    validations:
+      required: true

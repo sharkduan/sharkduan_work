@@ -1,0 +1,33 @@
+name: Research task
+description: Track a model, ETL, rule, evaluation, or literature-backed research task.
+title: "Research: "
+labels: ["research"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+      description: State the specific question or hypothesis.
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Expected artifacts
+      description: Documents, ADRs, scripts, tables, reports, or experiments expected from this task.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and references
+      description: Relevant ADRs, data contracts, papers, or upstream model boundaries.
+    validations:
+      required: false
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Completion criteria and validation method.
+    validations:
+      required: true

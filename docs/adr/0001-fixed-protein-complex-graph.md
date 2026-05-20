@@ -1,0 +1,3 @@
+# Fixed Protein Coordinates with a Protein-Ligand Complex Graph
+
+We represent generated covalent inhibitors as a protein-ligand complex graph so the covalent attachment is a typed cross edge, but the first model keeps protein atom coordinates fixed and diffuses only ligand-side structure plus the covalent cross edge. This follows the more common structure-based ligand generation pattern used by PMDM-like models while still making the covalent connection explicit; full protein-ligand coordinate diffusion is deferred because it would require modeling pocket flexibility and substantially more complex training data.

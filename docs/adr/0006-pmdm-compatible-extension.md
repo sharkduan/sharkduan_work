@@ -1,0 +1,3 @@
+# PMDM-Compatible Extension
+
+The covalent inhibitor model will extend PMDM rather than replace it. PMDM already provides pocket-conditioned ligand atom and coordinate diffusion, global/local geometric encoders, sampling, reconstruction, and evaluation flow; the covalent model will add a covalent training schema, reaction-family conditioning, reactive-site conditioning, soft cross-edge prediction, cross-edge message passing, and covalent losses on top of that backbone. A ground-up rewrite is deferred because it would obscure whether the covalent additions are actually responsible for any improvement.

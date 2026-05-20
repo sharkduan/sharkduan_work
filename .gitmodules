@@ -1,0 +1,7 @@
+[submodule "PMDM"]
+	path = PMDM
+	url = https://github.com/Layne-Huang/PMDM.git
+
+[submodule "PocketFlow"]
+	path = PocketFlow
+	url = https://github.com/Saoge123/PocketFlow.git

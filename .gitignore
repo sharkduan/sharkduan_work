@@ -1,0 +1,58 @@
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+.conda/
+
+# Training, sampling, and experiment outputs
+checkpoints/
+ckpt/
+PocketFlow/ckpt/
+outputs/
+output/
+runs/
+wandb/
+lightning_logs/
+tensorboard/
+*.ckpt
+*.pdbqt
+
+# Keep data directory structure, not generated or raw corpora.
+data/raw/**
+data/interim/**
+data/processed/**
+data/reports/**
+!data/raw/**/
+!data/interim/**/
+!data/processed/**/
+!data/reports/**/
+!data/raw/**/.gitkeep
+!data/interim/**/.gitkeep
+!data/processed/**/.gitkeep
+!data/reports/**/.gitkeep
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/

@@ -1,0 +1,3 @@
+# First Training Core Quality Filters
+
+The first training core applies P0 hard rejection for missing or unmappable covalent atoms, missing ligand coordinates, malformed ligand bond tables, multi-covalent linkages, and unsupported reaction families. P1 records such as structures worse than 3.0 Angstrom resolution, extreme covalent bond-length outliers, severe clashes, incomplete ligand heavy atoms, or alternate-location ambiguity are rejected by default but counted in quality reports. P2 issues such as missing activity data, missing assay data, non-human proteins, and low-confidence warhead mapping are retained with quality flags.

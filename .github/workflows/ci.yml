@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-smoke:
+    name: Python smoke checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Compile project-owned Python
+        run: python -m compileall -q scripts src
+
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Block generated caches and large binaries
+        shell: python
+        run: |
+          import subprocess
+          from pathlib import Path
+
+          tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          blocked_suffixes = {".pyc", ".pyo", ".ckpt"}
+          blocked_parts = {
+              "__pycache__",
+              ".pytest_cache",
+              "wandb",
+              "runs",
+              "outputs",
+              "checkpoints",
+              "ckpt",
+          }
+          violations = []
+
+          for name in tracked:
+              path = Path(name)
+              if any(part in blocked_parts for part in path.parts):
+                  violations.append(f"{name} is generated cache/output")
+                  continue
+              if path.suffix.lower() in blocked_suffixes:
+                  violations.append(f"{name} is a generated or large binary artifact")
+                  continue
+              if path.exists() and path.is_file() and path.stat().st_size > 95 * 1024 * 1024:
+                  violations.append(f"{name} is larger than 95 MiB")
+
+          if violations:
+              print("Repository hygiene violations:")
+              for violation in violations:
+                  print(f"- {violation}")
+              raise SystemExit(1)
+
+  documentation:
+    name: Documentation policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate ADR numbering and core docs
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          required = [
+              Path("README.md"),
+              Path("CONTEXT.md"),
+              Path("docs/github-management.md"),
+          ]
+          missing = [str(path) for path in required if not path.exists()]
+          if missing:
+              print("Missing required project documentation:")
+              for path in missing:
+                  print(f"- {path}")
+              raise SystemExit(1)
+
+          adr_dir = Path("docs/adr")
+          numbers = {}
+          bad_names = []
+          for path in sorted(adr_dir.glob("*.md")):
+              match = re.match(r"^(\d{4})-[a-z0-9-]+\.md$", path.name)
+              if not match:
+                  bad_names.append(path.name)
+                  continue
+              numbers.setdefault(match.group(1), []).append(path.name)
+
+          duplicates = {number: names for number, names in numbers.items() if len(names) > 1}
+          if bad_names or duplicates:
+              if bad_names:
+                  print("ADR filenames must use NNNN-kebab-case.md:")
+                  for name in bad_names:
+                      print(f"- {name}")
+              if duplicates:
+                  print("Duplicate ADR numbers:")
+                  for number, names in duplicates.items():
+                      print(f"- {number}: {', '.join(names)}")
+              raise SystemExit(1)

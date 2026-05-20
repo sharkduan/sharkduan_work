@@ -1,0 +1,36 @@
+name: Bug report
+description: Report incorrect behavior in code, scripts, ETL, generation, or evaluation.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What failed, and what behavior did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Commands, inputs, data stage, or document section needed to reproduce the issue.
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Error output, metrics, logs, screenshots, or affected files.
+    validations:
+      required: false
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope notes
+      description: Mention whether this touches PMDM, PocketFlow, src/covalent_design, data contracts, or docs/adr.
+    validations:
+      required: false
