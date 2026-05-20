@@ -51,6 +51,7 @@ Run the checks that mirror the current GitHub Actions workflow:
 
 ```bash
 python -m compileall -q scripts src
+PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
 Before opening a PR, also review:
