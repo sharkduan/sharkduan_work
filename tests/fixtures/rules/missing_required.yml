@@ -1,0 +1,19 @@
+version: 1
+families:
+  - family_id: CYS_MICHAEL_ADDITION
+    target_residue_name: CYS
+    target_atom_name: SG
+    residue_reaction_class: MICHAEL_ADDITION
+    allowed_ligand_attachment_elements: [C]
+    allowed_covalent_bond_types: [single]
+    allowed_warhead_smarts: []
+    warhead_rule_status: pending
+    forbidden_warhead_smarts: []
+    bond_length_range: {min: null, max: null, unit: angstrom}
+    protein_side_angle_range: {min: null, max: null, unit: degree}
+    ligand_side_angle_range: {min: null, max: null, unit: degree}
+    geometry_status:
+      bond_length: pending
+      protein_side_angle: pending
+      ligand_side_angle: pending
+    notes: "Missing anchor_atom_name, ligand_neighbor_policy, protein_state_requirements, and valence_delta."

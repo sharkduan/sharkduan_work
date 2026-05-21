@@ -1,0 +1,28 @@
+version: 1
+families:
+  - family_id: CYS_MICHAEL_ADDITION
+    target_residue_name: CYS
+    target_atom_name: SG
+    residue_reaction_class: MICHAEL_ADDITION
+    allowed_ligand_attachment_elements: [C]
+    allowed_covalent_bond_types: [single]
+    allowed_warhead_smarts: []
+    warhead_rule_status: pending
+    forbidden_warhead_smarts: []
+    bond_length_range: {min: null, max: null, unit: angstrom}
+    protein_side_angle_range: {min: null, max: null, unit: degree}
+    ligand_side_angle_range: {min: null, max: null, unit: degree}
+    geometry_status:
+      bond_length: calibrated
+      protein_side_angle: pending
+      ligand_side_angle: pending
+    anchor_atom_name: CB
+    ligand_neighbor_policy: first_heavy_atom_excluding_target
+    protein_state_requirements:
+      target_atom_formal_charge: required
+      target_atom_protonation_state: required
+      explicit_hydrogen_state: required_or_inferred
+    valence_delta:
+      target_atom: 1
+      ligand_attachment_atom: 1
+    notes: "Null bond_length_range bounds with calibrated geometry_status is invalid."
