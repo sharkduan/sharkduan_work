@@ -9,7 +9,7 @@ Tie every development specification to checkable evidence. This document prevent
 | Area | Evidence Required | Primary Command | Blocking For |
 | --- | --- | --- | --- |
 | Raw source manifests | Manifest schema, checksum fixtures, missing-license fixture | `python -m covalent_design.data.validate_manifests --raw-root data/raw` | Data ingestion |
-| Source parsing | 10-record CovBinder fixture, CovPDB fixture, CovalentInDB P0-source fixture | `python -m covalent_design.data.ingest --source <source>` | Normalization |
+| Source parsing | 10-record CovBinder fixture, CovPDB fixture, CovalentInDB P0-source fixture | `python -m covalent_design.data.ingest --source <source> --raw-root data/raw` | Normalization |
 | Canonical identity | Duplicate merge fixture, linkage conflict fixture | `python -m covalent_design.data.normalize --interim-root data/interim --out-root data/processed` | Record writing |
 | Quality filters | Q0/Q1/Q2 fixtures and report section | `python -m covalent_design.data.write_quality_report` | Training core release |
 | CovalentComplexRecord | JSONL schema, artifact manifest checksum check | `python -m covalent_design.data.build_record_index` | Model/training input |
@@ -34,6 +34,7 @@ Tie every development specification to checkable evidence. This document prevent
 ### Data Release Gate
 
 - All three required sources report `complete_for_v1: true`.
+- `complete_for_v1` is a per-source raw manifest coverage signal; the release gate is the all-source ETL quality report after accepted, rejected, and conflict records reconcile.
 - Accepted, rejected, and conflict records reconcile.
 - Rule calibration sheet and rule table are present.
 - Edge candidates and splits pass schema and leakage checks.

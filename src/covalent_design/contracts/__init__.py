@@ -39,6 +39,8 @@ from covalent_design.contracts.types import (
     REQUEST_VALIDATION_ERROR_CODES,
     RuleGeometryStatus,
     RuleWarheadStatus,
+    SourceIngestRecord,
+    SourceRecordLineage,
     ValidationReceipt,
     VisualCheckStatus,
 )
@@ -70,6 +72,8 @@ __all__ = [
     "REQUEST_VALIDATION_ERROR_CODES",
     "RuleGeometryStatus",
     "RuleWarheadStatus",
+    "SourceIngestRecord",
+    "SourceRecordLineage",
     "ValidationReceipt",
     "VisualCheckStatus",
     "exit_code_for_error",

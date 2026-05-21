@@ -139,12 +139,15 @@ class ContractEnvelope(Generic[T]):
 
 @dataclass(frozen=True)
 class ProteinAtomIdentity:
-    chain_id: str
-    residue_number: int
+    chain_id: Optional[str]
+    residue_number: Optional[int]
     residue_name: str
     atom_name: str
     altloc: Optional[str] = None
     insertion_code: Optional[str] = None
+    structure_model: Optional[int] = None
+    asym_id: Optional[str] = None
+    atom_serial: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,40 @@ class LigandAtomIdentity:
     ligand_id: str
     atom_name: str
     atom_index: Optional[int] = None
+    chain_id: Optional[str] = None
+    asym_id: Optional[str] = None
+    residue_number: Optional[int] = None
+    altloc: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class SourceRecordLineage:
+    source_database: str
+    source_version: str
+    source_record_id: str
+    raw_manifest_file: str
+    raw_file_path: str
+    raw_file_sha256: str
+    row_index: int
+
+
+@dataclass(frozen=True)
+class SourceIngestRecord:
+    source_database: str
+    source_version: str
+    source_record_id: str
+    raw_manifest_file: str
+    raw_file_path: str
+    raw_file_sha256: str
+    row_index: int
+    lineage: Mapping[str, object]
+    protein: Mapping[str, object]
+    ligand: Mapping[str, object]
+    linkage: Mapping[str, object]
+    metadata: Mapping[str, object]
+    source_lineage: Optional[SourceRecordLineage] = None
+    target_atom_identity: Optional[ProteinAtomIdentity] = None
+    ligand_atom_identity: Optional[LigandAtomIdentity] = None
 
 
 @dataclass(frozen=True)

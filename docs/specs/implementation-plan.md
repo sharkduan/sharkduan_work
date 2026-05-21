@@ -137,7 +137,7 @@ pytest tests/io/test_artifacts.py -q
 **Files/modules:**
 
 - `src/covalent_design/data/manifests.py`
-- `src/covalent_design/data/cli/validate_manifests.py`
+- `src/covalent_design/data/validate_manifests.py`
 - `tests/data/test_manifests.py`
 - `tests/fixtures/raw_manifest/`
 
@@ -165,6 +165,7 @@ pytest tests/data/test_manifests.py -q
 - `src/covalent_design/data/ingest.py`
 - `src/covalent_design/data/sources/covbinder_in_pdb.py`
 - `tests/data/test_ingest_covbinder.py`
+- `tests/data/test_ingest_cli.py`
 - `tests/fixtures/covbinder/`
 
 **Dependencies:** Task 4.
@@ -198,7 +199,7 @@ pytest tests/data/test_ingest_covbinder.py -q
 
 - CovPDB structural records preserve resolution and structural cross-check fields.
 - CovalentInDB P0-source fields are parsed and P1/P2 fields are preserved only as metadata.
-- Per-source coverage can report `complete_for_v1: false` until all gates pass.
+- Per-source raw manifest coverage can report `complete_for_v1: false` until all gates pass. This is a single-source coverage signal, not the all-source ETL release gate.
 
 **Verification:**
 

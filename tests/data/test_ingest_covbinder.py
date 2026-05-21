@@ -23,6 +23,13 @@ class CovBinderIngestionTests(unittest.TestCase):
         self.assertEqual(0, envelope.payload.failure_count)
         self.assertEqual({}, dict(envelope.payload.failure_reason_counts))
 
+    def test_complete_for_v1_is_single_source_raw_manifest_signal(self):
+        envelope = ingest_source("covbinder_in_pdb", FIXTURE_ROOT / "valid")
+
+        self.assertTrue(envelope.payload.complete_for_v1)
+        self.assertIn("Single-source raw ingestion summary", SourceIngestIndex.__doc__)
+        self.assertIn("not the ETL release gate", SourceIngestIndex.__doc__)
+
     def test_covbinder_records_preserve_lineage_and_source_fields(self):
         envelope = ingest_source("covbinder_in_pdb", FIXTURE_ROOT / "valid")
 

@@ -56,3 +56,4 @@ data/reports/**
 *.temp
 tmp/
 temp/
+_tmp_*/

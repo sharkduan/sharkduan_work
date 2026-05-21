@@ -104,6 +104,29 @@ class RawManifestValidationTests(unittest.TestCase):
             self.assertIn("RAW_MANIFEST_CHECKSUM_MISMATCH", errors)
             self.assertEqual(errors["RAW_MANIFEST_CHECKSUM_MISMATCH"].owner, "data")
 
+    def test_missing_manifested_file_is_structured_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp)
+            source_root = raw_root / "covbinder_in_pdb"
+            source_root.mkdir(parents=True)
+            write_manifest(
+                source_root,
+                [
+                    {
+                        "path": "records.csv",
+                        "role": "records",
+                        "bytes": 12,
+                        "sha256": "0" * 64,
+                    }
+                ],
+            )
+
+            envelope = validate_raw_manifests(raw_root)
+
+            self.assertFalse(envelope.receipt.ok)
+            self.assertEqual(envelope.receipt.errors[0].code, "RAW_MANIFEST_FILE_NOT_FOUND")
+            self.assertEqual(envelope.receipt.errors[0].owner, "data")
+
     def test_unmanifested_files_are_reported_as_extras(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp)

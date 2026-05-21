@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Mapping
 
 from covalent_design.contracts.errors import ContractErrorInfo
-from covalent_design.contracts.types import SCHEMA_VERSION, ValidationReceipt
-from covalent_design.io.artifacts import artifact_ref_from_file
+from covalent_design.contracts.types import SCHEMA_VERSION, ArtifactRef, ValidationReceipt
 
 
 def write_validation_receipt(path: Path, receipt: ValidationReceipt):
@@ -15,11 +15,13 @@ def write_validation_receipt(path: Path, receipt: ValidationReceipt):
         json.dumps(receipt_to_dict(receipt), indent=2, sort_keys=True),
         encoding="utf-8",
     )
-    return artifact_ref_from_file(
-        path,
-        role="validation_receipt",
-        schema_version=SCHEMA_VERSION,
+    return ArtifactRef(
+        uri=path.name,
+        sha256=_sha256_file(path),
         format="json",
+        schema_version=SCHEMA_VERSION,
+        bytes=path.stat().st_size,
+        role="validation_receipt",
     )
 
 
@@ -96,3 +98,11 @@ def _require_list(payload: Mapping[str, object], key: str) -> list[object]:
     if not isinstance(value, list):
         raise ValueError(f"VALIDATION_RECEIPT_{key.upper()}_INVALID")
     return value
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

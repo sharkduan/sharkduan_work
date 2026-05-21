@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from covalent_design.contracts import (
     ArtifactRef,
@@ -88,6 +89,13 @@ class CoreContractTests(unittest.TestCase):
         self.assertEqual(CLI_EXIT_CODES["request_validation_failed"], 20)
         self.assertEqual(exit_code_for_error(request_error), 20)
         self.assertEqual(exit_code_for_error(denominator_error), 12)
+
+    def test_contract_receipts_do_not_import_io_layer(self) -> None:
+        receipts_path = Path(__file__).resolve().parents[2] / "src" / "covalent_design" / "contracts" / "receipts.py"
+        source = receipts_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("from covalent_design.io", source)
+        self.assertNotIn("import covalent_design.io", source)
 
 
 if __name__ == "__main__":

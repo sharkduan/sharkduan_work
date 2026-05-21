@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from collections import Counter
@@ -12,8 +13,13 @@ from covalent_design.contracts import (
     ArtifactRef,
     ContractEnvelope,
     ContractErrorInfo,
+    LigandAtomIdentity,
+    ProteinAtomIdentity,
     Provenance,
+    SourceIngestRecord,
+    SourceRecordLineage,
     ValidationReceipt,
+    exit_code_for_error,
 )
 from covalent_design.data.manifests import RawManifestFile, RawSourceManifest, validate_raw_manifests
 from covalent_design.data.sources.covbinder_in_pdb import (
@@ -28,22 +34,6 @@ SUPPORTED_SOURCES = ("covbinder_in_pdb", "covpdb", "covalentin_db")
 
 
 @dataclass(frozen=True)
-class SourceIngestRecord:
-    source_database: str
-    source_version: str
-    source_record_id: str
-    raw_manifest_file: str
-    raw_file_path: str
-    raw_file_sha256: str
-    row_index: int
-    lineage: Mapping[str, object]
-    protein: Mapping[str, object]
-    ligand: Mapping[str, object]
-    linkage: Mapping[str, object]
-    metadata: Mapping[str, object]
-
-
-@dataclass(frozen=True)
 class SourceIngestFailure:
     source_database: str
     raw_file_path: str
@@ -55,6 +45,14 @@ class SourceIngestFailure:
 
 @dataclass(frozen=True)
 class SourceIngestIndex:
+    """Single-source raw ingestion summary.
+
+    complete_for_v1 mirrors the staged raw manifest for this one source. It is
+    not the ETL release gate, which is decided later by the all-source quality
+    report after normalization, conflicts, records, candidates, and visual
+    gates reconcile.
+    """
+
     source_database: str
     source_version: str
     complete_for_v1: bool
@@ -176,6 +174,15 @@ def _find_source_manifest(
 
 
 def _to_ingest_record(row: Any) -> SourceIngestRecord:
+    source_lineage = SourceRecordLineage(
+        source_database=row.source_database,
+        source_version=row.source_version,
+        source_record_id=row.source_record_id,
+        raw_manifest_file=row.raw_manifest_file,
+        raw_file_path=row.raw_file_path,
+        raw_file_sha256=row.raw_file_sha256,
+        row_index=row.row_index,
+    )
     return SourceIngestRecord(
         source_database=row.source_database,
         source_version=row.source_version,
@@ -189,6 +196,9 @@ def _to_ingest_record(row: Any) -> SourceIngestRecord:
         ligand=row.ligand,
         linkage=row.linkage,
         metadata=row.metadata,
+        source_lineage=source_lineage,
+        target_atom_identity=_target_atom_identity(row.protein, row.metadata),
+        ligand_atom_identity=_ligand_atom_identity(row.ligand),
     )
 
 
@@ -247,3 +257,89 @@ def _envelope(
 def _index_hash(index: SourceIngestIndex) -> str:
     payload = json.dumps(asdict(index), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _target_atom_identity(protein: Mapping[str, object], metadata: Mapping[str, object]) -> ProteinAtomIdentity:
+    return ProteinAtomIdentity(
+        structure_model=_optional_int(protein.get("structure_model") or metadata.get("structure_model")),
+        chain_id=_optional_str(protein.get("chain_id") or metadata.get("chain")),
+        asym_id=_optional_str(protein.get("asym_id")),
+        residue_name=_optional_str(protein.get("residue_name") or protein.get("residue")) or "",
+        residue_number=_optional_int(protein.get("residue_number")),
+        insertion_code=_optional_str(protein.get("insertion_code")),
+        altloc=_optional_str(protein.get("altloc")),
+        atom_name=_optional_str(protein.get("atom_name")) or "",
+        atom_serial=_optional_int(protein.get("atom_serial")),
+    )
+
+
+def _ligand_atom_identity(ligand: Mapping[str, object]) -> LigandAtomIdentity:
+    return LigandAtomIdentity(
+        ligand_id=_optional_str(ligand.get("ligand_id") or ligand.get("compound_id")) or "",
+        chain_id=_optional_str(ligand.get("chain_id")),
+        asym_id=_optional_str(ligand.get("asym_id")),
+        residue_number=_optional_int(ligand.get("residue_number")),
+        atom_name=_optional_str(ligand.get("attachment_atom") or ligand.get("atom_name")) or "",
+        atom_index=_optional_int(ligand.get("atom_index")),
+        altloc=_optional_str(ligand.get("altloc")),
+    )
+
+
+def _optional_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_int(value: object) -> Optional[int]:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Ingest a staged covalent data source.")
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--raw-root", type=Path, required=True)
+    parser.add_argument("--out", type=Path)
+    args = parser.parse_args(argv)
+
+    envelope = ingest_source(args.source, args.raw_root, out=args.out)
+    print(json.dumps(_summary(envelope), indent=2, sort_keys=True))
+    if envelope.receipt.ok:
+        return 0
+    return exit_code_for_error(envelope.receipt.errors[0])
+
+
+def _summary(envelope: ContractEnvelope[SourceIngestIndex]) -> dict[str, object]:
+    payload = envelope.payload
+    return {
+        "ok": envelope.receipt.ok,
+        "validator": envelope.receipt.validator,
+        "contract_version": envelope.receipt.contract_version,
+        "source": payload.source_database,
+        "source_database": payload.source_database,
+        "source_version": payload.source_version,
+        "complete_for_v1": payload.complete_for_v1,
+        "complete_for_v1_scope": "single_source_raw_manifest",
+        "raw_record_count": payload.raw_record_count,
+        "record_count": payload.record_count,
+        "failure_count": payload.failure_count,
+        "failure_counts": dict(payload.failure_reason_counts),
+        "failure_reason_counts": dict(payload.failure_reason_counts),
+        "errors": [asdict(error) for error in envelope.receipt.errors],
+        "warnings": [asdict(warning) for warning in envelope.receipt.warnings],
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
