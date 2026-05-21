@@ -1,0 +1,11 @@
+pdb_id,chain,residue_number,residue_name,target_atom_name,ligand_id,ligand_chain,ligand_residue,ligand_attachment_atom,bond_type,reaction_family,resolution
+1abc,A,25,CYS,SG,LIG,A,301,C1,thioether,cysteine_thiol,2.0
+2bcd,B,89,SER,OG,EST,B,201,C2,ester,serine_hydroxyl,1.8
+3cde,A,145,CYS,SG,DSF,A,401,C3,disulfide,cysteine_disulfide,2.5
+4def,C,32,LYS,NZ,AMI,C,501,N1,amine,lysine_amine,1.9
+5efg,B,210,HIS,NE2,IMZ,A,601,C4,imidazole,histidine_imidazole,2.2
+6fgh,A,78,CYS,SG,LIG,B,701,C5,thioether,cysteine_thiol,1.7
+7ghi,D,15,SER,OG,EST,A,801,C6,ester,serine_hydroxyl,2.3
+8hij,B,256,THR,OG1,ETH,C,901,C7,ether,threonine_hydroxyl,2.1
+9ijk,A,310,CYS,SG,LIG,A,1001,C8,thioether,cysteine_thiol,1.5
+10jkl,C,42,LYS,NZ,AMI,B,1101,N2,amine,lysine_amine,2.8

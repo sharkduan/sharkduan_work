@@ -1,0 +1,16 @@
+{
+  "source_database": "covbinder_in_pdb",
+  "source_version": "fixture-2026-05-20",
+  "retrieval_date": "2026-05-20",
+  "license": "fixture-only",
+  "access_notes": "Committed lightweight CovBinder ingestion smoke fixture.",
+  "complete_for_v1": true,
+  "files": [
+    {
+      "path": "records.csv",
+      "role": "records",
+      "bytes": 746,
+      "sha256": "6314ad77e17adfcd4a0ab51fb0fee2501e9ac4e1d9fa349b8ff171469f7991a8"
+    }
+  ]
+}

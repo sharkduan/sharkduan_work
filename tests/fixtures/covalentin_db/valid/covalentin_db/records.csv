@@ -1,0 +1,11 @@
+compound_id,target_name,uniprot_id,residue,residue_name,atom_name,attachment_atom,warhead_class,bond_type,reaction_family,pdb_id,chain,resolution,ic50_nm,ki_nm,assay_type,reference,doi,year,p1_confidence,p2_notes
+CID0001,Kinase A,P11111,Cys,CYS,SG,C1,acrylamide,thioether,cysteine_michael_addition,1abc,A,2.0,12.5,,biochemical,Smith 2020,10.1000/cid0001,2020,high,fixture literature note
+CID0002,Protease B,P22222,Ser,SER,OG,C2,beta-lactone,ester,serine_acylation,2bcd,B,1.8,45.0,20.0,enzymatic,Jones 2019,10.1000/cid0002,2019,medium,fixture literature note
+CID0003,Transferase C,P33333,Cys,CYS,SG,C3,disulfide,disulfide,cysteine_disulfide_exchange,3cde,A,2.5,,15.0,biophysical,Lee 2021,10.1000/cid0003,2021,medium,fixture literature note
+CID0004,Ligase D,P44444,Lys,LYS,NZ,N1,aldehyde,schiff_base,lysine_schiff_base,4def,C,1.9,100.0,,cellular,Chen 2018,10.1000/cid0004,2018,low,fixture literature note
+CID0005,Hydrolase E,P55555,Cys,CYS,SG,C4,epoxide,thioether,cysteine_nucleophilic_substitution,5efg,B,2.2,8.0,5.0,biochemical,Patel 2022,10.1000/cid0005,2022,high,fixture literature note
+CID0006,Kinase F,P66666,Cys,CYS,SG,C5,chloroacetamide,thioether,cysteine_alkylation,6fgh,A,1.7,30.0,,biochemical,Davis 2020,10.1000/cid0006,2020,high,fixture literature note
+CID0007,Protease G,P77777,Ser,SER,OG,C6,phosphonate,ester,serine_phosphonylation,7ghi,D,2.3,,40.0,enzymatic,Garcia 2021,10.1000/cid0007,2021,medium,fixture literature note
+CID0008,Transferase H,P88888,Thr,THR,OG1,C7,vinyl_sulfone,ether,threonine_hydroxyl,8hij,B,2.1,60.0,,biochemical,Wang 2017,10.1000/cid0008,2017,low,fixture literature note
+CID0009,Kinase I,P99999,Cys,CYS,SG,C8,acrylamide,thioether,cysteine_michael_addition,9ijk,A,1.5,4.0,2.0,biochemical,Brown 2023,10.1000/cid0009,2023,high,fixture literature note
+CID0010,Ligase J,P10101,Lys,LYS,NZ,N2,aldehyde,schiff_base,lysine_schiff_base,10jkl,C,2.8,150.0,,cellular,Miller 2016,10.1000/cid0010,2016,low,fixture literature note

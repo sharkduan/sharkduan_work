@@ -7,6 +7,9 @@ from pathlib import Path
 from covalent_design.data.manifests import validate_raw_manifests
 
 
+FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "raw_manifest"
+
+
 def write_text(path: Path, text: str) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = text.encode("utf-8")
@@ -31,6 +34,27 @@ def write_manifest(source_root: Path, files: list[dict], **overrides: object) ->
 
 
 class RawManifestValidationTests(unittest.TestCase):
+    def test_committed_valid_fixture_reports_inventory_and_receipt(self) -> None:
+        envelope = validate_raw_manifests(FIXTURE_ROOT / "valid")
+
+        self.assertEqual(envelope.payload.source_count, 1)
+        self.assertEqual(envelope.payload.file_count, 1)
+        self.assertEqual(envelope.payload.extra_files, ())
+        self.assertTrue(envelope.receipt.ok)
+        manifest = envelope.payload.manifests[0]
+        self.assertEqual(manifest.license, "fixture-only")
+        self.assertEqual(manifest.access_notes, "committed lightweight test fixture")
+
+    def test_missing_license_fixture_reports_license_and_access_notes(self) -> None:
+        envelope = validate_raw_manifests(FIXTURE_ROOT / "missing_license")
+
+        self.assertFalse(envelope.receipt.ok)
+        self.assertEqual(len(envelope.receipt.errors), 1)
+        error = envelope.receipt.errors[0]
+        self.assertEqual(error.code, "RAW_MANIFEST_MISSING_REQUIRED_FIELD")
+        self.assertIn("license", error.message)
+        self.assertIn("access_notes", error.message)
+
     def test_valid_manifest_reports_inventory_and_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp)

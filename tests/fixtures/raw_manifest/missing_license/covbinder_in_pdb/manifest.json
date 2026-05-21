@@ -1,0 +1,14 @@
+{
+  "source_database": "covbinder_in_pdb",
+  "source_version": "2026-05-fixture",
+  "retrieval_date": "2026-05-20",
+  "complete_for_v1": true,
+  "files": [
+    {
+      "path": "records.csv",
+      "role": "records",
+      "bytes": 14,
+      "sha256": "332433b40eb045d6e5b43d74eaef139d5a3b13d5b81765253390a31482050641"
+    }
+  ]
+}

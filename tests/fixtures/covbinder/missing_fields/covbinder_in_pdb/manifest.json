@@ -1,0 +1,16 @@
+{
+  "source_database": "covbinder_in_pdb",
+  "source_version": "fixture-2026-05-20",
+  "retrieval_date": "2026-05-20",
+  "license": "fixture-only",
+  "access_notes": "Committed lightweight CovBinder ingestion fixture with malformed rows.",
+  "complete_for_v1": false,
+  "files": [
+    {
+      "path": "records.csv",
+      "role": "records",
+      "bytes": 338,
+      "sha256": "b932ba8515d9957e2cafebfe194d07ac01a343d55dd13f8d598054c45336d346"
+    }
+  ]
+}

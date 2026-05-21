@@ -1,0 +1,16 @@
+{
+  "source_database": "covpdb",
+  "source_version": "fixture-2026-05-20",
+  "retrieval_date": "2026-05-20",
+  "license": "fixture-only",
+  "access_notes": "Committed lightweight CovPDB ingestion fixture with malformed rows.",
+  "complete_for_v1": false,
+  "files": [
+    {
+      "path": "records.csv",
+      "role": "records",
+      "bytes": 690,
+      "sha256": "8e22ad2fa64d7936c48eff02488b3962944b7cad1b81938ce0e62b2a8ed77c6b"
+    }
+  ]
+}

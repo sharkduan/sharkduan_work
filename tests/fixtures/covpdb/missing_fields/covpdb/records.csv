@@ -1,0 +1,5 @@
+pdb_id,chain,residue_number,residue_name,target_atom_name,ligand_id,ligand_chain,ligand_residue,ligand_attachment_atom,bond_type,reaction_family,resolution,experimental_method,r_factor,r_free,linkage_distance_angstrom,structure_validation_status,cross_check_notes
+,,,,SG,LIG,A,301,C1,thioether,cysteine_thiol,2.0,X-RAY,0.18,0.22,1.82,matched,missing protein identity fields
+1abc,A,25,CYS,SG,LIG,A,301,C1,thioether,cysteine_thiol,2.0,X-RAY,0.18,0.22,1.82,matched,valid control row
+2bcd,B,89,SER,OG,EST,B,201,C2,ester,serine_hydroxyl,,X-RAY,0.17,0.21,1.76,matched,missing required resolution
+4def,C,32,LYS,NZ,AMI,C,501,N1,amine,lysine_amine,1.9,X-RAY,0.19,0.23,1.91,matched,valid control row

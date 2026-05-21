@@ -1,0 +1,5 @@
+pdb_id,chain,residue_number,residue_name,target_atom_name,ligand_id,ligand_chain,ligand_residue,ligand_attachment_atom,bond_type,reaction_family,resolution
+,,,,,,,301,C1,thioether,cysteine_thiol,2.0
+1abc,A,25,CYS,SG,LIG,A,301,C1,thioether,cysteine_thiol,2.0
+2bcd,,89,,,,B,201,C2,,,1.8
+4def,C,32,LYS,NZ,AMI,C,501,N1,amine,lysine_amine,1.9
