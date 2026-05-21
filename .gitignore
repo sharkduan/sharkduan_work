@@ -57,3 +57,4 @@ data/reports/**
 tmp/
 temp/
 _tmp_*/
+.codex_claude_bridge/
