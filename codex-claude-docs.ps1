@@ -184,6 +184,7 @@ if ($allowedDirs.Count -gt 0) {
   }
 }
 
+$claudeArgs += "--"
 $claudeArgs += $systemTask
 
 Push-Location $runDir
