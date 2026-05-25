@@ -288,26 +288,33 @@ python -m covalent_design.data.normalize --interim-root tests/fixtures/normalize
 
 ### Task 10: Build Record Index And Artifact References
 
-**Goal:** Write accepted record indexes and non-edge artifacts without embedding large arrays.
+**Goal:** Write accepted record indexes and required non-edge artifact references without embedding large arrays.
 
 **Files/modules:**
 
 - `src/covalent_design/data/records.py`
 - `src/covalent_design/data/artifact_manifests.py`
+- `src/covalent_design/data/build_record_index.py`
 - `tests/data/test_records.py`
+- `tests/fixtures/records/`
 
 **Dependencies:** Task 9.
 
 **Acceptance criteria:**
 
-- `records.jsonl` contains schema version, core labels, lineage, metadata, and artifact references.
-- Protein atom table, ligand atom table, ligand bond table, and coordinates are external artifacts.
-- Rejected and conflict indexes are separate from accepted `CovalentComplexRecord`.
+- `build_record_index(processed_root)` reads `accepted.jsonl`, `rejected.jsonl`, and `conflicts.jsonl` from `processed_root` and discovers per-record artifacts under `processed_root/artifacts/{record_id}/{role}.*`.
+- Missing any of the four required non-edge artifact roles (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, `coordinates`) is a hard validation failure: the envelope returns `passed=False` with structured `ContractErrorInfo` entries and no partial `records.jsonl` is written.
+- `records.jsonl` rows each contain `schema_version`, `contract_version`, `record_id`, `core_labels`, `lineage`, `metadata`, and `artifacts` (a list of `ArtifactRef` dicts) with sorted-by-record_id output.
+- `rejected_index.jsonl` and `conflict_index.jsonl` are separate from accepted records.
+- `artifact_manifest.json` maps each `record_id` to its `ArtifactRef` entries.
+- All output is byte-deterministic across repeated runs with identical inputs.
+- Task 10 does **not** generate `edge_candidates`, `visual_check`, or split keys — those are appended by later tasks.
 
 **Verification:**
 
 ```bash
 pytest tests/data/test_records.py -q
+python -m covalent_design.data.build_record_index --processed-root tests/fixtures/records/valid
 ```
 
 ### Task 11: Build Rule Calibration Sheet
@@ -319,17 +326,24 @@ pytest tests/data/test_records.py -q
 - `src/covalent_design/rules/calibration.py`
 - `src/covalent_design/rules/cli/build_calibration_sheet.py`
 - `tests/rules/test_calibration.py`
+- `tests/fixtures/calibration/`
 
 **Dependencies:** Task 10.
 
 **Acceptance criteria:**
 
-- Calibration sheet includes sample count, representative structures, atom distributions, warhead distribution, geometry summaries, outliers, manual decision, and notes.
-- Families with pending SMARTS or geometry are clearly marked.
+- Calibration CSV has 14 columns: `family_id`, `sample_count`, `representative_record_ids`, `target_atom_distribution`, `ligand_attachment_element_distribution`, `warhead_distribution`, `bond_length_summary`, `protein_side_angle_summary`, `ligand_side_angle_summary`, `outlier_record_ids`, `manual_decision`, `notes`, `pending_smarts_marker`, `pending_geometry_marker`.
+- Geometry summaries read pre-computed values from `records.jsonl` entries under `metadata.geometry` (no 3D coordinate re-computation is performed).
+- No `edge_candidates` files, directories, or artifact roles are generated — edge candidates are Task 12 scope.
+- `pending_smarts_marker` is `"pending"` when the rule table `warhead_rule_status` is `pending` or `allowed_warhead_smarts` is empty; `"calibrated"` when `warhead_rule_status` is `calibrated` with non-empty SMARTS.
+- `pending_geometry_marker` is `"pending"` when any of `bond_length`, `protein_side_angle`, or `ligand_side_angle` geometry status is not `calibrated`; `"calibrated"` when all three are explicitly calibrated.
+- Families with zero accepted records still produce a row with `sample_count=0`, empty distributions, and an informational notes field.
+- Output is byte-deterministic across repeated runs with identical inputs.
 
 **Verification:**
 
 ```bash
+python -m covalent_design.rules.cli.build_calibration_sheet --records <records.jsonl> --rules <rule_table.yml> --out-csv <out-csv>
 pytest tests/rules/test_calibration.py -q
 ```
 
@@ -347,38 +361,59 @@ pytest tests/rules/test_calibration.py -q
 
 **Acceptance criteria:**
 
+- Public API: `covalent_design.candidates.edge_candidates.build_edge_candidates(records_path: Path, candidate_radius_angstrom: float = 4.0) -> ContractEnvelope`.
+- CLI: `python -m covalent_design.candidates.cli.build_edge_candidates --records <records.jsonl> --radius 4.0`.
 - Every accepted record has exactly one positive edge.
-- Nearby non-attachment ligand atoms become no-edge negatives.
-- Zero negative windows are encoded as `empty_radius_window`, not failure.
+- Nearby non-attachment ligand atoms within `candidate_radius_angstrom` become no-edge negatives.
+- One per-record external artifact is written at `<records_dir>/artifacts/<record_id>/edge_candidates.json`.
+- Each artifact includes: `schema_version`, `contract_version`, `record_id`, `role` (value `"edge_candidates"`), `lineage`, `positive_edge`, `negative_edges`, `denominators`, `artifact_refs`, and `empty_radius_window`.
+- `denominators` has 10 fields: `candidate_count`, `natural_candidate_count`, `forced_positive_count`, `eligible_edge_count`, `masked_candidate_count`, `edge_loss_denominator`, `bond_type_loss_denominator`, `geometry_loss_denominator`, `message_passing_candidate_count`, `gate_evaluated_count`.
+- Zero negative windows encode `empty_radius_window: true` with an empty `negative_edges` list — this is a valid result, not a failure.
+- Missing `coordinates`, `protein_atom_table`, or `ligand_atom_table` artifact refs produce structured `ContractErrorInfo` entries; the envelope returns `ok=False` and no partial output is written for the affected record.
+- Task 12 does **not** update `records.jsonl` or `artifact_manifest.json` with edge-candidate refs, and does not produce splits, visual-check, or finalized-manifest artifacts — those are Task 13–15 scope.
 
 **Verification:**
 
 ```bash
 pytest tests/candidates/test_edge_candidates.py -q
+python -m covalent_design.candidates.cli.build_edge_candidates --records tests/fixtures/edge_candidates/valid/records.jsonl --radius 4.0
 ```
 
 ### Task 13: Finalize Record Manifests
 
-**Goal:** Close the two-phase record/artifact manifest lifecycle.
+**Goal:** Close the two-phase record/artifact manifest lifecycle by appending edge-candidate artifact refs to every accepted record and updating the manifest.
 
 **Files/modules:**
 
 - `src/covalent_design/data/artifact_manifests.py`
 - `src/covalent_design/data/cli/finalize_record_manifests.py`
 - `tests/data/test_finalize_record_manifests.py`
+- `tests/fixtures/finalize_record_manifests/`
 
 **Dependencies:** Task 12.
 
 **Acceptance criteria:**
 
-- Every accepted record manifest includes edge-candidate artifact path, format, and checksum.
-- Missing or checksum-mismatched edge candidate artifact fails hard.
-- No obsolete artifact manifest exists without record linkage unless explicitly marked obsolete or rejected.
+- Public API: `finalize_record_manifests(records_path: Path) -> ContractEnvelope[dict[str, object]]` reads `records.jsonl` and `artifact_manifest.json` from the same directory. For every accepted record, discovers `artifacts/<record_id>/edge_candidates.json` and validates embedded `artifact_refs` inside it (each ref's checksum must match the referenced file on disk).
+- Hard failures (envelope returns `ok=False`, no partial writes to `records.jsonl` or `artifact_manifest.json`):
+  - `EDGE_CANDIDATE_ARTIFACT_MISSING`: `edge_candidates.json` not found for a record.
+  - `EDGE_CANDIDATE_ARTIFACT_DUPLICATE`: an `edge_candidates` artifact ref is already present in the record or manifest (re-run guard).
+  - `EDGE_CANDIDATE_RECORD_ID_MISMATCH` / `EDGE_CANDIDATE_ROLE_INVALID`: `edge_candidates.json` does not identify the accepted record or role it is linked to.
+  - `EDGE_CANDIDATE_UNREADABLE`: `edge_candidates.json` cannot be parsed.
+  - Checksum mismatch in any embedded artifact ref inside `edge_candidates.json`.
+  - `ARTIFACT_MANIFEST_OBSOLETE_UNLINKED`: `artifact_manifest.json` contains entries for record ids not present in `records.jsonl`.
+  - `RECORDS_UNREADABLE` / `ARTIFACT_MANIFEST_UNREADABLE`: input files cannot be parsed.
+- On success, appends an `edge_candidates` `ArtifactRef` dict to each accepted record's `artifacts` list and to `artifact_manifest.json`. Artifact lists remain sorted by role.
+- `rejected_index.jsonl` and `conflict_index.jsonl` are not modified.
+- Output is byte-deterministic across repeated runs with identical inputs.
+- Task 13 does **not** generate edge candidates (Task 12), splits (Task 14), visual checks (Task 15), or quality reports (Task 16).
+- CLI: `python -m covalent_design.data.cli.finalize_record_manifests --records <records.jsonl>` prints a JSON summary (`ok`, `record_count`, `edge_candidate_count`, `errors`) to stdout and exits zero on success, non-zero on error.
 
 **Verification:**
 
 ```bash
 pytest tests/data/test_finalize_record_manifests.py -q
+python -m covalent_design.data.cli.finalize_record_manifests --records tests/fixtures/finalize_record_manifests/valid/records.jsonl
 ```
 
 ### Task 14: Build Leakage-Aware Splits

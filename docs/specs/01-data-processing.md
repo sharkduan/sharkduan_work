@@ -22,10 +22,10 @@ python -m covalent_design.data.ingest --source covpdb --raw-root data/raw --out 
 python -m covalent_design.data.ingest --source covalentin_db --raw-root data/raw --out data/interim
 python -m covalent_design.data.normalize --interim-root data/interim --out-root data/processed
 python -m covalent_design.data.build_record_index --processed-root data/processed
-python -m covalent_design.rules.build_calibration_sheet --records data/processed/covalent_complex_records/records.jsonl
-python -m covalent_design.rules.validate_rule_table --rules data/rules/reaction_family_rule_table.yml
-python -m covalent_design.candidates.build_edge_candidates --records data/processed/covalent_complex_records/records.jsonl --radius 4.0
-python -m covalent_design.data.finalize_record_manifests --records data/processed/covalent_complex_records/records.jsonl
+python -m covalent_design.rules.cli.validate_rule_table --rules data/rules/reaction_family_rule_table.yml
+python -m covalent_design.rules.cli.build_calibration_sheet --records data/processed/records.jsonl --rules data/rules/reaction_family_rule_table.yml --out-csv data/rules/rule_calibration_sheet.csv
+python -m covalent_design.candidates.cli.build_edge_candidates --records <records.jsonl> --radius 4.0
+python -m covalent_design.data.cli.finalize_record_manifests --records <records.jsonl>
 python -m covalent_design.data.build_splits --records data/processed/covalent_complex_records/records.jsonl
 python -m covalent_design.viz.export_visual_checks --records data/processed/covalent_complex_records/records.jsonl
 python -m covalent_design.data.write_quality_report --out data/reports/etl_quality_report.md
@@ -54,9 +54,14 @@ src/covalent_design/rules/
   schema.py
   calibration.py
   validate.py
+  cli/
+    build_calibration_sheet.py
+    validate_rule_table.py
 
 src/covalent_design/candidates/
   edge_candidates.py
+  cli/
+    build_edge_candidates.py
 
 src/covalent_design/viz/
   visual_checks.py
@@ -86,7 +91,7 @@ Rules:
 - Quality severities are `Q0`, `Q1`, and `Q2`; do not reuse CovalentInDB field priority names for quality behavior.
 - Task 9 treats `required_gate_state_unavailable` as a Q0 rejection flag when present. Full protein chemical-state inference and flag population remain an explicit pre-training-core dependency, not an implied side effect of normalization.
 - Large protein, ligand, coordinate, and edge tensors are external artifacts, not inline JSONL arrays.
-- Record writing is two-phase: `build_record_index` writes the accepted/rejected/conflict indexes and non-edge artifacts; `finalize_record_manifests` runs after edge candidates exist and must fail if any accepted record lacks a manifest entry for edge candidates.
+- Record writing is two-phase: `build_record_index` (Task 10) writes the accepted/rejected/conflict indexes and the four required non-edge artifact references (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, `coordinates`); `finalize_record_manifests` (Task 13) runs after edge candidates exist, validates embedded `artifact_refs` in every `edge_candidates.json`, appends the `edge_candidates` artifact ref to each accepted record's `artifacts` list, and updates `artifact_manifest.json`. Task 13 fails hard on missing `edge_candidates.json`, checksum mismatches in embedded artifact refs, pre-existing `edge_candidates` refs (duplicate detection), and obsolete manifest entries not linked to any accepted record. No partial writes: if any error is detected, `records.jsonl` and `artifact_manifest.json` are not modified. Task 10 does not generate `edge_candidates`, `visual_check`, or split keys — those are appended or verified by later tasks.
 
 ## Testing Strategy
 
@@ -136,7 +141,7 @@ Never:
 - Each required source has `complete_for_v1: true` in `data/reports/etl_quality_report.md`.
 - Accepted `CovalentComplexRecord` rows each contain exactly one monodentate covalent linkage and one positive edge label.
 - Rejected records and conflict groups are counted with reasons and lineage.
-- `data/rules/rule_calibration_sheet.csv` exists and supports manual review.
+- `data/rules/rule_calibration_sheet.csv` exists with 14 columns (family_id, sample_count, representative_record_ids, target_atom_distribution, ligand_attachment_element_distribution, warhead_distribution, bond_length_summary, protein_side_angle_summary, ligand_side_angle_summary, outlier_record_ids, manual_decision, notes, pending_smarts_marker, pending_geometry_marker) and supports manual review.
 - `data/rules/reaction_family_rule_table.yml` validates against the rule schema.
 - Radius-bounded candidate artifacts include explicit `empty_radius_window` semantics when no local negatives exist.
 - Random, protein-cluster, and de-warheaded scaffold splits exist and primary scaffold overlap is zero across train/val/test.

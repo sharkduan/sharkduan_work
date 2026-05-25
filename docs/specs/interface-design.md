@@ -198,13 +198,41 @@ def normalize_with_identity_resolution(
 
 def build_record_index(
     processed_root: Path,
-    rule_table: "ReactionFamilyRuleTable",
-) -> ContractEnvelope["RecordIndex"]: ...
+) -> ContractEnvelope[dict[str, object]]: ...
+    """Build accepted, rejected, and conflict indexes from Task 9 output.
+
+    Inputs are ``processed_root/accepted.jsonl``, ``rejected.jsonl``,
+    ``conflicts.jsonl``, and ``processed_root/artifacts/{record_id}/{role}.*``.
+    Outputs are ``records.jsonl``, ``rejected_index.jsonl``,
+    ``conflict_index.jsonl``, and ``artifact_manifest.json``.
+
+    Missing a required non-edge artifact role (protein_atom_table,
+    ligand_atom_table, ligand_bond_table, or coordinates) is a hard
+    validation failure — the envelope returns ``passed=False`` with
+    structured ``ContractErrorInfo`` entries and no partial output.
+    """
 
 def build_edge_candidates(
-    records: "RecordIndex",
+    records_path: Path,
     candidate_radius_angstrom: float = 4.0,
-) -> ContractEnvelope["EdgeCandidateIndex"]: ...
+) -> ContractEnvelope[dict[str, object]]: ...
+    """Build per-record edge-candidate artifacts for accepted records.
+
+    Reads ``records_path`` (a JSONL of accepted ``CovalentComplexRecord``
+    rows) and writes one external artifact per record at
+    ``<records_dir>/artifacts/<record_id>/edge_candidates.json``.
+
+    Each artifact carries ``schema_version``, ``contract_version``,
+    ``record_id``, ``role`` (``"edge_candidates"``), ``lineage``,
+    ``positive_edge``, ``negative_edges``, ``denominators`` (10 fields),
+    ``artifact_refs``, and ``empty_radius_window``.  Zero negatives is a valid
+    ``empty_radius_window``, not a failure.  Missing ``coordinates``,
+    protein atom-table, or ligand atom-table refs produce structured
+    ``ContractErrorInfo`` entries and the envelope returns ``ok=False``.
+
+    This function does **not** update ``records.jsonl`` or
+    ``artifact_manifest.json`` — that finalization is Task 13 scope.
+    """
 
 def build_splits(
     records: "RecordIndex",
@@ -212,9 +240,37 @@ def build_splits(
 ) -> ContractEnvelope["SplitIndex"]: ...
 
 def finalize_record_manifests(
-    records: "RecordIndex",
-    candidates: "EdgeCandidateIndex",
-) -> ContractEnvelope["RecordBundle"]: ...
+    records_path: Path,
+) -> ContractEnvelope[dict[str, object]]: ...
+    """Append edge-candidate artifact refs to every accepted record and update the
+    artifact manifest.
+
+    Reads ``records_path`` (a JSONL of accepted ``CovalentComplexRecord`` rows)
+    and ``artifact_manifest.json`` from the same directory.  For every accepted
+    record validates that ``artifacts/<record_id>/edge_candidates.json`` exists
+    and contains valid embedded artifact refs whose checksums match the files
+    they reference.
+
+    Hard failures (no partial writes to ``records.jsonl`` or
+    ``artifact_manifest.json``):
+
+    * ``EDGE_CANDIDATE_ARTIFACT_MISSING`` — ``edge_candidates.json`` not found for a record
+    * ``EDGE_CANDIDATE_ARTIFACT_DUPLICATE`` — an ``edge_candidates`` artifact ref is
+      already present in the record or manifest (re-run guard)
+    * ``EDGE_CANDIDATE_RECORD_ID_MISMATCH`` / ``EDGE_CANDIDATE_ROLE_INVALID`` —
+      ``edge_candidates.json`` does not identify the accepted record or role it is
+      linked to
+    * ``EDGE_CANDIDATE_UNREADABLE`` — ``edge_candidates.json`` cannot be parsed
+    * Checksum mismatches in any embedded artifact ref inside ``edge_candidates.json``
+    * ``ARTIFACT_MANIFEST_OBSOLETE_UNLINKED`` — manifest contains entries for record
+      ids not present in ``records.jsonl``
+
+    On success, appends the ``edge_candidates`` ref to each record's ``artifacts``
+    list and updates ``artifact_manifest.json``.  Writes are deterministic across
+    repeated runs with identical inputs.  This function does **not** generate edge
+    candidates, splits, visual checks, or quality reports — those are Task 12,
+    Task 14, Task 15, and Task 16 scope respectively.
+    """
 
 def write_quality_report(
     bundle: "RecordBundle",
@@ -233,33 +289,35 @@ python -m covalent_design.data.normalize --source covbinder_in_pdb --raw-root te
 python -m covalent_design.data.normalize --ingest-index data/interim/ingest_index.json
 python -m covalent_design.data.normalize --interim-root data/interim --out data/reports/normalize_summary.json
 python -m covalent_design.data.build_record_index --processed-root data/processed
-python -m covalent_design.candidates.build_edge_candidates --records data/processed/covalent_complex_records/records.jsonl --radius 4.0
-python -m covalent_design.data.finalize_record_manifests --records data/processed/covalent_complex_records/records.jsonl
+python -m covalent_design.candidates.cli.build_edge_candidates --records <records.jsonl> --radius 4.0
+python -m covalent_design.data.cli.finalize_record_manifests --records <records.jsonl>
 python -m covalent_design.data.build_splits --records data/processed/covalent_complex_records/records.jsonl
 python -m covalent_design.data.write_quality_report --out data/reports/etl_quality_report.md
 ```
 
 ### Artifact Boundary
 
-`records.jsonl` contains only identifiers, normalized labels, lineage, quality flags, metadata, and `ArtifactRef` entries. These are external artifacts:
+`records.jsonl` contains only identifiers, normalized labels, lineage, quality flags, metadata, and `ArtifactRef` entries. Task 10 writes the four required non-edge artifact roles:
 
 - `protein_atom_table`
 - `ligand_atom_table`
 - `ligand_bond_table`
 - `coordinates`
-- `edge_candidates`
-- `visual_check`
-- split keys
 
-Rejected records and conflict groups are separate indexes. They are not iterable as accepted `CovalentComplexRecord` values unless explicitly requested through a rejected/conflict API.
+Missing any of these four roles is a hard validation failure. `edge_candidates`, `visual_check`, and split keys are appended by later tasks (Task 12 and beyond) and are not present in Task 10 output.
+
+Task 13 appends the `edge_candidates` artifact role to each accepted record and to `artifact_manifest.json`. After finalization, every accepted record has exactly five artifact roles. Task 13 validates embedded artifact refs inside `edge_candidates.json` and fails hard on missing files, checksum mismatches, duplicate edge-candidate refs, and obsolete unlinked manifest entries. No partial writes occur on error.
+
+Rejected records and conflict groups are separate indexes (`rejected_index.jsonl`, `conflict_index.jsonl`). They are not iterable as accepted `CovalentComplexRecord` values unless explicitly requested through a rejected/conflict API.
 
 ### Misuse Guards
 
 - `build_record_id()` recalculates deterministic ids from canonical linkage identity; caller-supplied ids are verified, not trusted.
 - `QualitySeverity` and CovalentInDB source-field priority are different enum types.
-- `empty_radius_window` is a valid negative-sampling status, not a candidate-build failure.
-- `finalize_record_manifests()` fails if any accepted record lacks an edge-candidate artifact checksum.
-- Visual check `fail` or `needs_rule_review` blocks sampled records from first-core release until resolved.
+- Missing a required non-edge artifact role (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, or `coordinates`) produces a hard validation failure with structured `ContractErrorInfo` entries — accepted records must never be silently skipped.
+- `empty_radius_window` is a valid negative-sampling status, not a candidate-build failure (Task 12).
+- `finalize_record_manifests()` fails hard if any accepted record lacks an `edge_candidates.json` artifact, if embedded artifact ref checksums do not match, if an `edge_candidates` ref is already present (duplicate), or if `artifact_manifest.json` contains entries not linked to any accepted record. No partial writes occur on error (Task 13).
+- Visual check `fail` or `needs_rule_review` blocks sampled records from first-core release until resolved (Task 15).
 
 ## Rules And Candidate Interfaces
 
@@ -277,8 +335,10 @@ def resolve_rule(
 
 def build_calibration_sheet(
     records: Path,
-    out: Path,
-) -> ContractEnvelope["CalibrationReport"]: ...
+    rules: Path,
+    out_csv: Path | None = None,
+    out_json: Path | None = None,
+) -> ContractEnvelope[dict]: ...
 
 def validate_edge_candidate_artifact(
     record: "CovalentComplexRecord",
@@ -294,6 +354,36 @@ Rule validation must enforce:
 - Missing required chemical state cannot pass a hard gate.
 
 For SMARTS and geometry, prefer discriminated contracts such as `CalibratedSmarts`, `PendingSmarts`, and `NotApplicableSmarts` instead of ambiguous `list[str] | None`.
+
+### CLI
+
+```bash
+python -m covalent_design.rules.cli.validate_rule_table --rules data/rules/reaction_family_rule_table.yml
+python -m covalent_design.rules.cli.build_calibration_sheet --records <records.jsonl> --rules <rule_table.yml> [--out-csv <csv>] [--out-json <json>]
+```
+
+### Calibration Sheet Semantics
+
+`build_calibration_sheet` generates a per-family CSV review sheet from `records.jsonl` and the rule table. The CSV has 14 columns:
+
+- `family_id` — reaction family identifier matching the rule table.
+- `sample_count` — number of accepted records for this family.
+- `representative_record_ids` — JSON-serialized sorted list of record_ids.
+- `target_atom_distribution` — JSON-serialized frequency of target atom names.
+- `ligand_attachment_element_distribution` — JSON-serialized frequency of ligand attachment element symbols (from `core_labels.ligand_atom_element`).
+- `warhead_distribution` — JSON-serialized frequency of `warhead_type` values.
+- `bond_length_summary` — min/max/mean summary of bond lengths from `metadata.geometry`.
+- `protein_side_angle_summary` — min/max/mean summary of protein-side angles from `metadata.geometry`.
+- `ligand_side_angle_summary` — min/max/mean summary of ligand-side angles from `metadata.geometry`.
+- `outlier_record_ids` — empty `[]` placeholder for manual review entries.
+- `manual_decision` — empty string for manual review entries.
+- `notes` — rule table notes or "No accepted samples in current dataset." for zero-sample families.
+- `pending_smarts_marker` — `"pending"` when the rule table `warhead_rule_status` is `pending` or `allowed_warhead_smarts` is empty; `"calibrated"` when `warhead_rule_status` is `calibrated` with non-empty SMARTS.
+- `pending_geometry_marker` — `"pending"` when any of `bond_length`, `protein_side_angle`, or `ligand_side_angle` geometry status is not `calibrated`; `"calibrated"` when all three are explicitly calibrated.
+
+Geometry summaries read pre-computed values from `records.jsonl` entries under `metadata.geometry.{bond_length, protein_side_angle, ligand_side_angle}.value`. No 3D coordinate re-computation is performed. No `edge_candidates` files, directories, or artifact roles are generated — edge candidates are Task 12 scope.
+
+Families with zero accepted records still produce a row with `sample_count=0`, empty distributions, and notes indicating no accepted samples. Output is byte-deterministic across repeated runs with identical inputs.
 
 ## Model Interfaces
 
@@ -650,7 +740,7 @@ python -m covalent_design.evaluation.report --summary outputs/eval/summary.yml -
 | --- | --- |
 | Raw data to ETL | manifest schema, checksum, license/access notes |
 | Source records to normalized records | canonical identity, atom mapping, monodentate filter |
-| Records to training core | Q0/Q1/Q2, visual gate, conflict exclusion, artifact checksums |
+| Records to training core | Q0/Q1/Q2, visual gate, conflict exclusion, non-edge artifact checksums for the 4 required roles |
 | Rule table to gates | `family_id`, SMARTS status, geometry status, required chemical state |
 | Records to model batch | tensor shapes, family key, edge candidate artifact, quality flags |
 | Model to training loss | denominator validity, forced-positive masks, detached message weights |

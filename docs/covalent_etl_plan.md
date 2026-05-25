@@ -159,7 +159,7 @@ data/interim/linkage_records/
 Processed training artifacts:
 
 ```text
-data/processed/covalent_complex_records/
+data/processed/
 data/processed/edge_candidates/
 data/processed/splits/
 data/processed/splits/scaffold_keys/
@@ -373,7 +373,9 @@ visual status: selected samples have manual status recorded before release
 
 ### 4. Build CovalentComplexRecord
 
-Create minimal training records with:
+Create minimal training records. The logical domain model includes the fields listed below; in the on-disk serialization (`records.jsonl`), these are grouped into `core_labels`, `lineage`, `metadata`, and `artifacts` (a list of `ArtifactRef` entries pointing to external files, not inline arrays).
+
+Logical domain fields:
 
 ```text
 record_id
@@ -436,28 +438,31 @@ Excluded from the first training loss:
 - selectivity panel
 - commercial availability
 
-Record storage uses a JSONL index with external structure and tensor artifacts:
+Record storage uses a JSONL index with external artifacts:
 
 ```text
-data/processed/covalent_complex_records/records.jsonl
-data/processed/covalent_complex_records/structures/
-data/processed/covalent_complex_records/ligands/
+data/processed/records.jsonl
+data/processed/rejected_index.jsonl
+data/processed/conflict_index.jsonl
+data/processed/artifact_manifest.json
+data/processed/artifacts/{record_id}/{role}.*
 ```
 
-Each JSONL row stores:
+Each JSONL row in `records.jsonl` stores:
 
 ```text
-record_id
 schema_version
-lineage.sources
-pdb_id
-core labels
-quality_flags
-paths to structure artifacts
-metadata
+contract_version
+record_id
+core_labels          # pdb_id, residue_reaction_family, target_atom_name/index,
+                     # ligand_atom_name/index, bond_type, warhead_type,
+                     # first_core_eligible
+lineage              # list of SourceRecordLineage objects
+metadata             # quality gate state, plus source-annotations not in core_labels
+artifacts            # list of ArtifactRef dicts (non-edge roles from Task 10)
 ```
 
-Large arrays and tensors should not be embedded directly in JSONL. Store protein atom tables, ligand atom tables, coordinates, and edge candidates as separate `.pt`, `.npz`, or parquet-style artifacts.
+Large arrays and tensors are not embedded directly in JSONL. Protein atom tables, ligand atom tables, ligand bond tables, and coordinates are stored as separate artifacts under `artifacts/{record_id}/` and referenced by `ArtifactRef` entries. `edge_candidates` and `visual_check` artifacts are appended by later tasks (Task 12, Task 15) and are not present in Task 10 output.
 
 Schema boundary:
 
@@ -466,7 +471,42 @@ Schema boundary:
 - Rejected records and conflict groups are not `CovalentComplexRecord` entries; they live in separate rejection and conflict indexes.
 - Calibration aggregates and rule decisions are not embedded in each record; they are linked by `residue_reaction_family` and artifact manifests.
 
-Required JSONL fields:
+Fields carried into `records.jsonl` (grouped under `core_labels`, `lineage`, `metadata`, and `artifacts` — not as flat top-level columns):
+
+```text
+record_id
+schema_version
+contract_version
+core_labels:
+  pdb_id
+  residue_reaction_family
+  target_atom_name
+  target_atom_index
+  ligand_atom_name
+  ligand_atom_index
+  bond_type
+  warhead_type
+  first_core_eligible
+lineage:
+  source_database
+  source_version
+  source_record_id
+  raw_manifest_file
+  raw_file_path
+  raw_file_sha256
+  row_index
+metadata:
+  quality:
+    quality_tier
+    quality_flags
+    quality_reasons
+    first_core_eligible
+  ...source_annotations (fields not normalized into core_labels)
+artifacts:
+  - {uri, sha256, format, schema_version, bytes, role}
+```
+
+The flat-field list below describes the full normalized record input (Task 9 output) from which Task 10 extracts the condensed JSONL schema above:
 
 ```text
 record_id
@@ -497,19 +537,19 @@ artifacts
 metadata
 ```
 
-Required artifact manifest fields per record:
+Required artifact manifest fields per record (Task 10 scope — non-edge roles only):
 
 ```yaml
 record_id: ""
 schema_version: 1
 artifacts:
-  protein_atom_table: {path: "", sha256: "", format: ""}
-  ligand_atom_table: {path: "", sha256: "", format: ""}
-  ligand_bond_table: {path: "", sha256: "", format: ""}
-  coordinates: {path: "", sha256: "", format: ""}
-  edge_candidates: {path: "", sha256: "", format: ""}
-  visual_check: {path: "", sha256: "", status: pending | pass | fail | not_sampled}
+  protein_atom_table: {uri: "", sha256: "", format: ""}
+  ligand_atom_table: {uri: "", sha256: "", format: ""}
+  ligand_bond_table: {uri: "", sha256: "", format: ""}
+  coordinates: {uri: "", sha256: "", format: ""}
 ```
+
+`edge_candidates` and `visual_check` are appended by later tasks (Task 12, Task 15). Missing any of the four required non-edge roles is a hard validation failure — accepted records must never be silently skipped.
 
 Index consistency checks:
 
@@ -525,23 +565,34 @@ no artifact manifest exists for a missing records.jsonl row unless it is marked 
 
 Summarize per-family evidence for manual review.
 
-Required columns:
+Required columns (14-column CSV):
 
 ```text
 family_id
 sample_count
-representative_pdb_ids
+representative_record_ids
 target_atom_distribution
 ligand_attachment_element_distribution
-warhead_type_distribution
-common_warhead_smarts
+warhead_distribution
 bond_length_summary
 protein_side_angle_summary
 ligand_side_angle_summary
-outlier_records
+outlier_record_ids
 manual_decision
 notes
+pending_smarts_marker
+pending_geometry_marker
 ```
+
+Semantics:
+
+- **Geometry summaries** (`bond_length_summary`, `protein_side_angle_summary`, `ligand_side_angle_summary`): read pre-computed values from `records.jsonl` entries under `metadata.geometry.{bond_length, protein_side_angle, ligand_side_angle}.value`. No 3D coordinate re-computation is performed. No `edge_candidates` files or directories are generated (edge candidates are a separate stage, Section 7).
+- **`pending_smarts_marker`**: `"pending"` when the rule table `warhead_rule_status` is `pending` or `allowed_warhead_smarts` is empty; `"calibrated"` when `warhead_rule_status` is `calibrated` with non-empty SMARTS.
+- **`pending_geometry_marker`**: `"pending"` when any of `bond_length`, `protein_side_angle`, or `ligand_side_angle` geometry status is not `calibrated`; `"calibrated"` when all three are explicitly calibrated.
+- **`outlier_record_ids`**: empty placeholder for manual review entries.
+- **`manual_decision`**: empty string for manual review entries.
+- Families with zero accepted records still produce a reviewable row with `sample_count=0`, empty distributions, and notes indicating "No accepted samples in current dataset."
+- Output is byte-deterministic across repeated runs with identical inputs.
 
 ### 6. Build Reaction Family Rule Table
 
