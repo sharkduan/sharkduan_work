@@ -23,14 +23,15 @@ class Task7IdentityContractBoundaryTests(unittest.TestCase):
         self.assertEqual(record.ligand_atom_identity.atom_name, "C1")
         self.assertEqual(record.linkage["residue_reaction_family"], "cysteine_thiol")
 
-    def test_task7_readiness_note_defines_boundary_without_implementation(self) -> None:
+    def test_task7_handoff_note_defines_completed_boundary(self) -> None:
         text = READINESS_DOC.read_text(encoding="utf-8")
 
         self.assertIn("Task 7 must not depend on private helper names", text)
         self.assertIn("CovBinderInPDB > CovPDB > CovalentInDB", text)
-        self.assertIn("does not implement canonical identity", text)
-        self.assertIn("canonical merge logic", text)
-        self.assertIn("conflict artifact writing", text)
+        self.assertIn("Completed", text)
+        self.assertIn("CanonicalLinkageIdentity", text)
+        self.assertIn("normalize_with_identity_resolution", text)
+        self.assertIn("Conflicts never enter accepted normalized output", text)
 
 
 if __name__ == "__main__":

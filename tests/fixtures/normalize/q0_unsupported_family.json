@@ -1,0 +1,36 @@
+{
+  "source_database": "covbinder_in_pdb",
+  "source_record_id": "q0-unsupported-family",
+  "pdb_id": "7stu",
+  "source_version": "2026-05-21",
+  "row_index": 7,
+  "target_atom": {
+    "chain_id": "A",
+    "residue_number": 11,
+    "residue_name": "HIS",
+    "atom_name": "NE2"
+  },
+  "ligand_atom": {
+    "ligand_id": "LIG",
+    "chain_id": "B",
+    "residue_number": 201,
+    "atom_name": "C5",
+    "atom_index": 5
+  },
+  "linkage": {
+    "residue_reaction_family": "HIS_MICHAEL_ADDITION",
+    "bond_type": "single",
+    "linkage_count": 1
+  },
+  "atom_mapping": {
+    "target_atom_index": 8,
+    "ligand_atom_index": 5,
+    "target_atom_name": "NE2",
+    "ligand_atom_name": "C5",
+    "mapping_verified": true
+  },
+  "quality": {
+    "resolution_angstrom": 2.0,
+    "flags": []
+  }
+}

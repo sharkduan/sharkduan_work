@@ -1,0 +1,36 @@
+{
+  "source_database": "covalentin_db",
+  "source_record_id": "q2-non-human",
+  "pdb_id": "3ghi",
+  "source_version": "2026-05-21",
+  "row_index": 3,
+  "target_atom": {
+    "chain_id": "A",
+    "residue_number": 8,
+    "residue_name": "LYS",
+    "atom_name": "NZ"
+  },
+  "ligand_atom": {
+    "ligand_id": "ALD",
+    "chain_id": "D",
+    "residue_number": 301,
+    "atom_name": "C7",
+    "atom_index": 7
+  },
+  "linkage": {
+    "residue_reaction_family": "LYS_SCHIFF_BASE",
+    "bond_type": "single",
+    "linkage_count": 1
+  },
+  "atom_mapping": {
+    "target_atom_index": 4,
+    "ligand_atom_index": 7,
+    "target_atom_name": "NZ",
+    "ligand_atom_name": "C7",
+    "mapping_verified": true
+  },
+  "quality": {
+    "resolution_angstrom": 2.2,
+    "flags": ["non_human_protein"]
+  }
+}

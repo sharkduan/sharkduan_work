@@ -1,0 +1,36 @@
+{
+  "source_database": "covbinder_in_pdb",
+  "source_record_id": "q0-multi",
+  "pdb_id": "4jkl",
+  "source_version": "2026-05-21",
+  "row_index": 4,
+  "target_atom": {
+    "chain_id": "A",
+    "residue_number": 77,
+    "residue_name": "CYS",
+    "atom_name": "SG"
+  },
+  "ligand_atom": {
+    "ligand_id": "LIG",
+    "chain_id": "B",
+    "residue_number": 801,
+    "atom_name": "C9",
+    "atom_index": 9
+  },
+  "linkage": {
+    "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+    "bond_type": "single",
+    "linkage_count": 2
+  },
+  "atom_mapping": {
+    "target_atom_index": 12,
+    "ligand_atom_index": 9,
+    "target_atom_name": "SG",
+    "ligand_atom_name": "C9",
+    "mapping_verified": true
+  },
+  "quality": {
+    "resolution_angstrom": 2.1,
+    "flags": []
+  }
+}

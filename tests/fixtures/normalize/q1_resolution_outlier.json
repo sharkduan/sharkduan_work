@@ -1,0 +1,36 @@
+{
+  "source_database": "covpdb",
+  "source_record_id": "q1-resolution",
+  "pdb_id": "2def",
+  "source_version": "2026-05-21",
+  "row_index": 2,
+  "target_atom": {
+    "chain_id": "A",
+    "residue_number": 12,
+    "residue_name": "SER",
+    "atom_name": "OG"
+  },
+  "ligand_atom": {
+    "ligand_id": "INH",
+    "chain_id": "C",
+    "residue_number": 701,
+    "atom_name": "P1",
+    "atom_index": 5
+  },
+  "linkage": {
+    "residue_reaction_family": "SER_PHOSPHONYLATION",
+    "bond_type": "single",
+    "linkage_count": 1
+  },
+  "atom_mapping": {
+    "target_atom_index": 2,
+    "ligand_atom_index": 5,
+    "target_atom_name": "OG",
+    "ligand_atom_name": "P1",
+    "mapping_verified": true
+  },
+  "quality": {
+    "resolution_angstrom": 3.4,
+    "flags": []
+  }
+}

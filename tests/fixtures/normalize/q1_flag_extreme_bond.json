@@ -1,0 +1,37 @@
+{
+  "source_database": "covpdb",
+  "source_record_id": "q1-flag-bond",
+  "pdb_id": "9abc",
+  "source_version": "2026-05-21",
+  "row_index": 31,
+  "target_atom": {
+    "chain_id": "A",
+    "residue_number": 55,
+    "residue_name": "LYS",
+    "atom_name": "NZ",
+    "atom_serial": 3001
+  },
+  "ligand_atom": {
+    "ligand_id": "INH",
+    "chain_id": "B",
+    "residue_number": 201,
+    "atom_name": "C7",
+    "atom_index": 7
+  },
+  "linkage": {
+    "residue_reaction_family": "LYS_SCHIFF_BASE",
+    "bond_type": "single",
+    "linkage_count": 1
+  },
+  "atom_mapping": {
+    "target_atom_index": 5,
+    "ligand_atom_index": 7,
+    "target_atom_name": "NZ",
+    "ligand_atom_name": "C7",
+    "mapping_verified": true
+  },
+  "quality": {
+    "resolution_angstrom": 1.9,
+    "flags": ["extreme_bond_length_outlier"]
+  }
+}

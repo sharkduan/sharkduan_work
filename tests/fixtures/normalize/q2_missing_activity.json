@@ -1,0 +1,36 @@
+{
+  "source_database": "covpdb",
+  "source_record_id": "q2-missing-activity",
+  "pdb_id": "6pqr",
+  "source_version": "2026-05-21",
+  "row_index": 6,
+  "target_atom": {
+    "chain_id": "A",
+    "residue_number": 32,
+    "residue_name": "CYS",
+    "atom_name": "SG"
+  },
+  "ligand_atom": {
+    "ligand_id": "WAR",
+    "chain_id": "A",
+    "residue_number": 601,
+    "atom_name": "C4",
+    "atom_index": 4
+  },
+  "linkage": {
+    "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+    "bond_type": "single",
+    "linkage_count": 1
+  },
+  "atom_mapping": {
+    "target_atom_index": 6,
+    "ligand_atom_index": 4,
+    "target_atom_name": "SG",
+    "ligand_atom_name": "C4",
+    "mapping_verified": true
+  },
+  "quality": {
+    "resolution_angstrom": 2.0,
+    "flags": ["missing_activity_data", "missing_assay_data"]
+  }
+}
