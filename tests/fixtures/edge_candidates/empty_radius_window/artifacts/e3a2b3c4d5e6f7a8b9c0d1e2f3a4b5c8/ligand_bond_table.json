@@ -1,0 +1,6 @@
+{
+  "bonds": [
+    {"atom1": 1, "atom2": 2, "bond_type": "single"},
+    {"atom1": 1, "atom2": 3, "bond_type": "double"}
+  ]
+}

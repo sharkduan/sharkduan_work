@@ -1,0 +1,8 @@
+{
+  "atoms": [
+    {"serial": 1, "name": "C1", "element": "C", "x": 4.800, "y": 5.100, "z": 4.900}
+  ],
+  "ligand_id": "LIG",
+  "residue_number": 501,
+  "chain_id": "B"
+}

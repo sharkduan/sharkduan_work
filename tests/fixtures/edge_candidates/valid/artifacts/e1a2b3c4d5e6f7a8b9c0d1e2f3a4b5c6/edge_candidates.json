@@ -1,0 +1,75 @@
+{
+  "artifact_refs": [
+    {
+      "bytes": 600,
+      "format": "pdb",
+      "role": "coordinates",
+      "schema_version": "1",
+      "sha256": "fake-sha256-e1-coords-00000000000000000000000000000000000000000000000000000000",
+      "uri": "artifacts/e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6/coordinates.pdb"
+    },
+    {
+      "bytes": 400,
+      "format": "json",
+      "role": "protein_atom_table",
+      "schema_version": "1",
+      "sha256": "fake-sha256-e1-protein-0000000000000000000000000000000000000000000000000000",
+      "uri": "artifacts/e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6/protein_atom_table.json"
+    },
+    {
+      "bytes": 350,
+      "format": "json",
+      "role": "ligand_atom_table",
+      "schema_version": "1",
+      "sha256": "fake-sha256-e1-ligand-00000000000000000000000000000000000000000000000000000",
+      "uri": "artifacts/e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6/ligand_atom_table.json"
+    }
+  ],
+  "contract_version": "1.0.0",
+  "denominators": {
+    "bond_type_loss_denominator": 3,
+    "candidate_count": 3,
+    "edge_loss_denominator": 3,
+    "eligible_edge_count": 3,
+    "forced_positive_count": 0,
+    "gate_evaluated_count": 3,
+    "geometry_loss_denominator": 3,
+    "masked_candidate_count": 0,
+    "message_passing_candidate_count": 3,
+    "natural_candidate_count": 3
+  },
+  "empty_radius_window": false,
+  "lineage": [
+    {
+      "raw_file_path": "/fixture/edge-valid-1.json",
+      "raw_file_sha256": "fixture-e1-lineage-sha256",
+      "raw_manifest_file": "edge-fixture-manifest.json",
+      "row_index": 0,
+      "source_database": "covbinder_in_pdb",
+      "source_record_id": "edge-valid-1",
+      "source_version": "2026-05-21"
+    }
+  ],
+  "negative_edges": [
+    {
+      "distance_angstrom": 1.7676,
+      "ligand_atom_element": "C",
+      "ligand_atom_name": "C2"
+    },
+    {
+      "distance_angstrom": 2.9649,
+      "ligand_atom_element": "C",
+      "ligand_atom_name": "C3"
+    }
+  ],
+  "positive_edge": {
+    "distance_angstrom": 0.344,
+    "ligand_atom_element": "C",
+    "ligand_atom_name": "C1",
+    "target_atom_element": "S",
+    "target_atom_name": "SG"
+  },
+  "record_id": "e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+  "role": "edge_candidates",
+  "schema_version": "1"
+}
