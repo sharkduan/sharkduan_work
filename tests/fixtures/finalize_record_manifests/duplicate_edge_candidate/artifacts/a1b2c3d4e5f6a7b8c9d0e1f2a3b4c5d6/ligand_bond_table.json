@@ -1,0 +1,8 @@
+{
+  "bonds": [
+    {"atom1": 1, "atom2": 2, "order": 1},
+    {"atom1": 2, "atom2": 3, "order": 2},
+    {"atom1": 3, "atom2": 4, "order": 1},
+    {"atom1": 3, "atom2": 5, "order": 1}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "atoms": [
+    {"serial": 1, "name": "N", "element": "N", "x": 1.0, "y": 2.0, "z": 3.0},
+    {"serial": 2, "name": "SG", "element": "S", "x": 4.0, "y": 5.0, "z": 6.0}
+  ],
+  "residue_name": "CYS",
+  "residue_number": 99,
+  "chain_id": "A"
+}

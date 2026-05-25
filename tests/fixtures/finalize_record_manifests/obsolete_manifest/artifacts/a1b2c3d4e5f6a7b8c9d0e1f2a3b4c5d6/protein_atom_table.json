@@ -1,0 +1,13 @@
+{
+  "atoms": [
+    {"serial": 1, "name": "N", "element": "N", "x": 12.345, "y": 8.901, "z": 3.214},
+    {"serial": 2, "name": "CA", "element": "C", "x": 13.456, "y": 7.890, "z": 4.123},
+    {"serial": 3, "name": "C", "element": "C", "x": 14.567, "y": 8.901, "z": 5.012},
+    {"serial": 4, "name": "O", "element": "O", "x": 15.678, "y": 9.012, "z": 4.891},
+    {"serial": 5, "name": "CB", "element": "C", "x": 13.012, "y": 6.543, "z": 5.234},
+    {"serial": 6, "name": "SG", "element": "S", "x": 14.123, "y": 5.432, "z": 6.001}
+  ],
+  "residue_name": "CYS",
+  "residue_number": 42,
+  "chain_id": "A"
+}

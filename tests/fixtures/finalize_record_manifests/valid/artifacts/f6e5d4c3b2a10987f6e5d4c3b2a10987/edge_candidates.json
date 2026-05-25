@@ -1,0 +1,80 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "record_id": "f6e5d4c3b2a10987f6e5d4c3b2a10987",
+  "role": "edge_candidates",
+  "lineage": [
+    {
+      "raw_file_path": "/fixture/q2.json",
+      "raw_file_sha256": "fixture-sha256-aabbccdd00112233445566778899eeff",
+      "raw_manifest_file": "normalize-fixture-manifest.json",
+      "row_index": 1,
+      "source_database": "covpdb",
+      "source_record_id": "q2-non-human",
+      "source_version": "2026-03-15"
+    }
+  ],
+  "positive_edge": {
+    "target_atom_name": "SG",
+    "target_atom_element": "S",
+    "ligand_atom_name": "C3",
+    "ligand_atom_element": "C",
+    "distance_angstrom": 1.79
+  },
+  "negative_edges": [
+    {
+      "ligand_atom_name": "C1",
+      "ligand_atom_element": "C",
+      "distance_angstrom": 2.88
+    },
+    {
+      "ligand_atom_name": "C2",
+      "ligand_atom_element": "C",
+      "distance_angstrom": 3.45
+    },
+    {
+      "ligand_atom_name": "C4",
+      "ligand_atom_element": "C",
+      "distance_angstrom": 3.91
+    }
+  ],
+  "denominators": {
+    "candidate_count": 4,
+    "natural_candidate_count": 4,
+    "forced_positive_count": 0,
+    "eligible_edge_count": 4,
+    "masked_candidate_count": 0,
+    "edge_loss_denominator": 4,
+    "bond_type_loss_denominator": 4,
+    "geometry_loss_denominator": 4,
+    "message_passing_candidate_count": 4,
+    "gate_evaluated_count": 4
+  },
+  "artifact_refs": [
+    {
+      "role": "coordinates",
+      "uri": "artifacts/f6e5d4c3b2a10987f6e5d4c3b2a10987/coordinates.pdb",
+      "sha256": "35a2a67806796520226d39ed642effd096b528ee6d84f444b9387421b3bf4366",
+      "format": "pdb",
+      "schema_version": "1",
+      "bytes": 1001
+    },
+    {
+      "role": "protein_atom_table",
+      "uri": "artifacts/f6e5d4c3b2a10987f6e5d4c3b2a10987/protein_atom_table.json",
+      "sha256": "387b0bc8b476a23b65f6636668632f792fd7f3cde98a7479d8c04638f05f928d",
+      "format": "json",
+      "schema_version": "1",
+      "bytes": 614
+    },
+    {
+      "role": "ligand_atom_table",
+      "uri": "artifacts/f6e5d4c3b2a10987f6e5d4c3b2a10987/ligand_atom_table.json",
+      "sha256": "d478e43ec34ccab8edabaf3ee7da11f866649013f4979e3bf07032b0409ed0eb",
+      "format": "json",
+      "schema_version": "1",
+      "bytes": 564
+    }
+  ],
+  "empty_radius_window": false
+}

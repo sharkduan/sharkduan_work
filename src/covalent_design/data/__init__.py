@@ -13,6 +13,8 @@ from covalent_design.data.identity import (
     normalize_identity_json,
     resolve_identities,
 )
+from covalent_design.data.records import build_record_index
+from covalent_design.data.artifact_manifests import finalize_record_manifests
 
 _NORMALIZE_EXPORTS = {
     "AcceptedRecord",
@@ -52,7 +54,9 @@ __all__ = [
     "RejectedIdentityInput",
     "RejectedRecord",
     "build_record_id",
+    "build_record_index",
     "canonical_identity_from_record",
+    "finalize_record_manifests",
     "normalize_identity_json",
     "normalize_linkages",
     "normalize_with_identity_resolution",
