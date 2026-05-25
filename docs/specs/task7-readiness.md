@@ -1,39 +1,54 @@
-# Task 7 Readiness: Canonical Identity And Conflict Resolution
+# Task 7 Handoff: Canonical Identity And Conflict Resolution (Completed)
 
 ## Status
 
-Readiness note for Task 7. This document does not supersede ADR 0030 and does not implement canonical identity, duplicate merge, record id generation, or conflict resolution.
+Completed. Task 7 implementation is integrated with Task 9 normalization. This note replaces the previous readiness draft and reflects the actual delivered artifacts.
 
-## Purpose
+## Delivered Modules
 
-Task 7 must normalize source ingestion records into deterministic linkage identities and conflict artifacts. Before that work starts, callers need a stable input seam that does not depend on source parser internals.
+| Module | Responsibility |
+| --- | --- |
+| `src/covalent_design/data/identity.py` | `CanonicalLinkageIdentity`, `build_record_id`, `resolve_identities`, `canonical_identity_from_record`, `IdentityResolutionResult`, `MergedIdentityRecord`, `RejectedIdentityInput` |
+| `src/covalent_design/data/conflicts.py` | `ConflictAnchor`, `ConflictGroup` |
+| `src/covalent_design/data/normalize.py` | `normalize_linkages` (in-memory API), `normalize_with_identity_resolution` (pipeline seam), CLI `main()` |
 
-## Stable Inputs
+## Delivered Tests
 
-Task 7 should consume `SourceIngestRecord` values through these contract fields:
+| Test file | Coverage |
+| --- | --- |
+| `tests/data/test_identity.py` | `canonical_identity_from_record`, `build_record_id` determinism, `resolve_identities` duplicate merge and conflict grouping, `RejectedIdentityInput` for missing critical fields |
+| `tests/data/test_identity_contracts.py` | Identity contract boundary assertions |
+| `tests/data/test_normalize.py` | `IdentityResolutionIntegrationTests`: duplicate merge into normalization, conflict exclusion from accepted output, rejected identity input exposure; `IngestToNormalizeIntegrationTests`: end-to-end identity-resolution-to-normalization pipeline |
+| `tests/data/test_normalize_cli.py` | CLI coverage for `--interim-root`, `--ingest-index`, `--raw-root`, `--source` input modes |
 
-- `source_lineage`: source database, source version, source record id, raw manifest file, raw file path, raw file sha256, and row index.
-- `target_atom_identity`: protein-side Structure Atom Identity fields available from ingestion.
-- `ligand_atom_identity`: ligand-side atom identity fields available from ingestion.
-- `linkage`: source-provided bond type and `residue_reaction_family`.
-- `metadata`: source annotations retained for conflict evidence.
+## Key Design Decisions (Implemented)
 
-Task 7 must not depend on private helper names or source-specific parser implementation details in `src/covalent_design/data/sources/`.
+- **`record_id` is deterministic**: built from SHA-256 of sorted canonical linkage identity JSON. Source ids are never used as canonical ids.
+- **Duplicate merge by canonical identity key**: records sharing the same `CanonicalLinkageIdentity` merge into one `MergedIdentityRecord` with combined lineage.
+- **Conflict grouping by anchor**: records sharing the same `ConflictAnchor` (structure + ligand) but differing linkage identities produce a `ConflictGroup`. Conflicts never enter accepted normalized output.
+- **Source priority**: `CovBinderInPDB > CovPDB > CovalentInDB` for annotation resolution. Losing values are preserved in `annotation_alternatives`.
+- **Two public APIs**: `normalize_linkages()` is the pure in-memory API for callers that have already resolved identities. `normalize_with_identity_resolution()` is the pipeline seam that runs identity resolution before normalization.
+- **CLI always resolves identities**: the `main()` entry point calls `normalize_with_identity_resolution` internally. All input modes (`--interim-root`, `--ingest-index`, `--raw-root`) route through identity resolution.
 
-## Required Task 7 Evidence
+## Contract Boundary
 
-Task 7 implementation should add fixtures and tests for:
+Task 7 and Task 9 consume `SourceIngestRecord` values through these stable fields:
 
-- duplicate canonical linkage inputs that merge lineage without using source ids as canonical ids;
-- PDB/ligand matches with target atom or linkage conflicts that produce conflict groups;
-- annotation conflicts resolved by source priority `CovBinderInPDB > CovPDB > CovalentInDB`, while losing values remain in lineage conflict metadata;
-- deterministic `record_id` generation from normalized canonical linkage identity.
+- `source_lineage: SourceRecordLineage` — typed authority for source provenance.
+- `target_atom_identity: ProteinAtomIdentity | None` — protein-side atom identity.
+- `ligand_atom_identity: LigandAtomIdentity | None` — ligand-side atom identity.
+- `linkage: Mapping[str, object]` — bond type and `residue_reaction_family`.
+- `protein`, `ligand`, `metadata` — mappings retained for quality gate evaluation and downstream annotation.
 
-## Out Of Scope For This Note
+Task 7 must not depend on private helper names or private parser internals in
+`src/covalent_design/data/sources/`.
 
-- `src/covalent_design/data/identity.py`
-- `src/covalent_design/data/conflicts.py`
-- `src/covalent_design/data/normalize.py`
-- canonical merge logic
-- conflict artifact writing
-- `record_id` generation
+## Downstream Consumers
+
+Task 10 (record index) should consume:
+
+- `NormalizationPayload.accepted` — `AcceptedRecord` values with `NormalizedLinkageRecord` and `QualityGateResult`.
+- `NormalizationPayload.rejected` — `RejectedRecord` values with reasons.
+- `NormalizationPayload.conflicts` — `ConflictGroup` values (excluded from training core).
+- `NormalizationPayload.rejected_identity_inputs` — `RejectedIdentityInput` values (excluded entirely).
+- `NormalizedLinkageRecord.record_id` — deterministic, ready for index keys.

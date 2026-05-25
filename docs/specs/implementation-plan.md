@@ -258,13 +258,15 @@ pytest tests/rules/test_rule_table.py -q
 
 ### Task 9: Normalize Structures And Apply Quality Gates
 
-**Goal:** Convert linkage records into accepted/rejected normalized records with atom mapping and Q0/Q1/Q2 behavior.
+**Goal:** Convert linkage records into accepted/rejected normalized records with atom mapping and Q0/Q1/Q2 behavior. Includes cross-source identity resolution (duplicate merge, conflict exclusion) and a CLI entry point.
 
 **Files/modules:**
 
 - `src/covalent_design/data/normalize.py`
 - `src/covalent_design/data/quality.py`
-- `tests/data/test_normalize_quality.py`
+- `tests/data/test_normalize.py`
+- `tests/data/test_normalize_cli.py`
+- `tests/fixtures/normalize/`
 
 **Dependencies:** Tasks 7, 8.
 
@@ -273,11 +275,15 @@ pytest tests/rules/test_rule_table.py -q
 - Target atom and ligand attachment atom mapping is verified.
 - Multi-linkage records are rejected from first training core with lineage.
 - Q0 hard rejection, Q1 default rejection, and Q2 keep-with-flag behavior are tested.
+- Cross-source duplicate records merge lineage; linkage identity conflicts produce conflict groups excluded from accepted output.
+- CLI accepts `--interim-root`, `--ingest-index`, `--raw-root`, and `--source` input modes and writes accepted/rejected/conflict JSONL outputs.
+- `required_gate_state_unavailable` is recognized as a Q0 quality flag; full protein chemical-state inference/population is deferred and must be wired before any first-core or training release gate relies on protein state.
 
 **Verification:**
 
 ```bash
-pytest tests/data/test_normalize_quality.py -q
+pytest tests/data/test_normalize.py tests/data/test_normalize_cli.py -q
+python -m covalent_design.data.normalize --interim-root tests/fixtures/normalize/interim --out-root data/processed/normalize-smoke
 ```
 
 ### Task 10: Build Record Index And Artifact References

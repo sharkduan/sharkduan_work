@@ -180,9 +180,21 @@ def ingest_source(
 ) -> ContractEnvelope["SourceIngestIndex"]: ...
 
 def normalize_linkages(
-    interim_root: Path,
-    out_root: Path,
-) -> ContractEnvelope["NormalizedLinkageIndex"]: ...
+    records: tuple[SourceIngestRecord, ...],
+) -> ContractEnvelope[NormalizationPayload]: ...
+    """Normalize already-selected source records without identity reconciliation.
+
+    This is a pure in-memory API for unit tests and callers that have already
+    resolved duplicates/conflicts upstream.  For the pipeline seam that merges
+    cross-source records and excludes linkage conflicts, use
+    ``normalize_with_identity_resolution``.
+    """
+
+def normalize_with_identity_resolution(
+    records: tuple[SourceIngestRecord, ...],
+) -> ContractEnvelope[NormalizationPayload]: ...
+    """Resolve canonical identities, merge duplicates, exclude conflicts,
+    then normalize and route through quality gates."""
 
 def build_record_index(
     processed_root: Path,
@@ -216,6 +228,10 @@ def write_quality_report(
 python -m covalent_design.data.validate_manifests --raw-root data/raw
 python -m covalent_design.data.ingest --source covbinder_in_pdb --raw-root data/raw --out data/interim
 python -m covalent_design.data.normalize --interim-root data/interim --out-root data/processed
+# Alternative input modes:
+python -m covalent_design.data.normalize --source covbinder_in_pdb --raw-root tests/fixtures/normalize
+python -m covalent_design.data.normalize --ingest-index data/interim/ingest_index.json
+python -m covalent_design.data.normalize --interim-root data/interim --out data/reports/normalize_summary.json
 python -m covalent_design.data.build_record_index --processed-root data/processed
 python -m covalent_design.candidates.build_edge_candidates --records data/processed/covalent_complex_records/records.jsonl --radius 4.0
 python -m covalent_design.data.finalize_record_manifests --records data/processed/covalent_complex_records/records.jsonl

@@ -84,6 +84,7 @@ Rules:
 - Cross-source duplicates merge only when canonical linkage identity matches.
 - Linkage identity conflicts produce conflict artifacts and are excluded from the first training core.
 - Quality severities are `Q0`, `Q1`, and `Q2`; do not reuse CovalentInDB field priority names for quality behavior.
+- Task 9 treats `required_gate_state_unavailable` as a Q0 rejection flag when present. Full protein chemical-state inference and flag population remain an explicit pre-training-core dependency, not an implied side effect of normalization.
 - Large protein, ligand, coordinate, and edge tensors are external artifacts, not inline JSONL arrays.
 - Record writing is two-phase: `build_record_index` writes the accepted/rejected/conflict indexes and non-edge artifacts; `finalize_record_manifests` runs after edge candidates exist and must fail if any accepted record lacks a manifest entry for edge candidates.
 

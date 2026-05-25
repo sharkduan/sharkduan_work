@@ -10,14 +10,14 @@ Tie every development specification to checkable evidence. This document prevent
 | --- | --- | --- | --- |
 | Raw source manifests | Manifest schema, checksum fixtures, missing-license fixture | `python -m covalent_design.data.validate_manifests --raw-root data/raw` | Data ingestion |
 | Source parsing | 10-record CovBinder fixture, CovPDB fixture, CovalentInDB P0-source fixture | `python -m covalent_design.data.ingest --source <source> --raw-root data/raw` | Normalization |
-| Canonical identity | Duplicate merge fixture, linkage conflict fixture | `python -m covalent_design.data.normalize --interim-root data/interim --out-root data/processed` | Record writing |
-| Quality filters | Q0/Q1/Q2 fixtures and report section | `python -m covalent_design.data.write_quality_report` | Training core release |
-| CovalentComplexRecord | JSONL schema, artifact manifest checksum check | `python -m covalent_design.data.build_record_index` | Model/training input |
-| Rule table | Rule schema validation, pending SMARTS fixture, null geometry fixture | `python -m covalent_design.rules.validate_rule_table --rules data/rules/reaction_family_rule_table.yml` | Candidate generation and gates |
-| Edge candidates | Positive edge fixture, no-edge negative fixture, empty-radius-window fixture | `python -m covalent_design.candidates.build_edge_candidates --radius 4.0` | Model/training input |
-| Final record manifests | Edge-candidate artifact path/checksum present for every accepted record | `python -m covalent_design.data.finalize_record_manifests` | Model/training input |
-| Splits | Scaffold key artifact, zero primary overlap check, fallback reason accounting, diagnostic overlap report | `python -m covalent_design.data.build_splits` | Generalization reporting |
-| Visual checks | Sampled artifact index with status values, fail/needs-rule-review gate fixtures | `python -m covalent_design.viz.export_visual_checks` | ETL release review |
+| Canonical identity | Duplicate merge fixture, linkage conflict fixture, rejected-identity-input fixture | `python -m covalent_design.data.normalize --interim-root data/interim --out-root data/processed` | Record writing |
+| Quality filters | Q0/Q1/Q2 fixtures and report section; quality tier/reason/flag summary | `python -m covalent_design.data.normalize --interim-root data/interim --out-root data/processed` (gate routing); `python -m covalent_design.data.write_quality_report` (future release report) | Training core release |
+| CovalentComplexRecord | JSONL schema, artifact manifest checksum check | `python -m covalent_design.data.build_record_index --processed-root data/processed` | Model/training input |
+| Rule table | Rule schema validation, pending SMARTS fixture, null geometry fixture | `python -m covalent_design.rules.cli.validate_rule_table --rules data/rules/reaction_family_rule_table.yml` | Candidate generation and gates |
+| Edge candidates | Positive edge fixture, no-edge negative fixture, empty-radius-window fixture | `python -m covalent_design.candidates.build_edge_candidates --records data/processed/covalent_complex_records/records.jsonl --radius 4.0` | Model/training input |
+| Final record manifests | Edge-candidate artifact path/checksum present for every accepted record | `python -m covalent_design.data.finalize_record_manifests --records data/processed/covalent_complex_records/records.jsonl` | Model/training input |
+| Splits | Scaffold key artifact, zero primary overlap check, fallback reason accounting, diagnostic overlap report | `python -m covalent_design.data.build_splits --records data/processed/covalent_complex_records/records.jsonl` | Generalization reporting |
+| Visual checks | Sampled artifact index with status values, fail/needs-rule-review gate fixtures | `python -m covalent_design.viz.cli.export_visual_checks` | ETL release review |
 | Model forward | Batch fixture, tensor shape assertions, forced-positive denominator | `python -m covalent_design.model.forward_smoke --config configs/covalent_model_smoke.yml` | Training |
 | Training losses | Tiny batch with natural positive, forced positive, zero negatives, missing state, Q2 keep-with-flag record | `python -m covalent_design.training.train --config configs/covalent_train_smoke.yml` | Model validation |
 | Training denominators | Family/timestep denominator report | `python -m covalent_design.training.report_denominators --run outputs/runs/<run_id>` | Training acceptance |
