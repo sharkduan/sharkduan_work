@@ -198,6 +198,8 @@ class RecordsJsonlSchemaTests(unittest.TestCase):
             "ligand_atom_name",
             "ligand_atom_index",
             "ligand_atom_element",
+            "bond_type",
+            "warhead_type",
         }
         for idx, row in enumerate(_read_jsonl(self.records_path)):
             labels = row["core_labels"]
@@ -226,6 +228,19 @@ class RecordsJsonlSchemaTests(unittest.TestCase):
                     dict,
                     f"Row {idx} artifact {art_idx}",
                 )
+
+
+    def test_records_have_non_empty_pdb_id(self):
+        for idx, row in enumerate(_read_jsonl(self.records_path)):
+            labels = row["core_labels"]
+            self.assertIsInstance(labels.get("pdb_id"), str, f"Row {idx}")
+            self.assertGreater(len(labels["pdb_id"]), 0, f"Row {idx}: empty pdb_id")
+
+    def test_records_have_ligand_bond_table_artifact_ref(self):
+        for idx, row in enumerate(_read_jsonl(self.records_path)):
+            bond_arts = [art for art in row["artifacts"] if art["role"] == "ligand_bond_table"]
+            self.assertEqual(len(bond_arts), 1, f"Row {idx}: missing ligand_bond_table")
+            self.assertGreater(len(bond_arts[0].get("uri", "")), 0, f"Row {idx}: empty ligand_bond_table uri")
 
 
 class ArtifactRefContractTests(unittest.TestCase):

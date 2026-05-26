@@ -528,6 +528,19 @@ class IngestToNormalizeIntegrationTests(unittest.TestCase):
         self.assertEqual(rejected_identity_sources, {"covalentin_db"})
 
 
+    def test_normalized_record_preserves_bond_type(self) -> None:
+        envelope = _normalize("clean_record.json")
+
+        normalized = envelope.payload.accepted[0].normalized
+        self.assertEqual(normalized.bond_type, "single")
+
+    def test_normalized_record_has_explicit_empty_warhead_type_when_unavailable(self) -> None:
+        envelope = _normalize("clean_record.json")
+
+        normalized = envelope.payload.accepted[0].normalized
+        self.assertEqual(normalized.warhead_type, "")
+
+
 class QualityGateEdgeCaseTests(unittest.TestCase):
     """Q0/Q1/Q2 routing edge cases."""
 

@@ -1,0 +1,1 @@
+{"source_database":"covbinder_in_pdb","source_version":"2024.1","complete_for_v1":true,"raw_root":"tests/fixtures/quality_report/inconsistent_counts/ingest/covbinder_in_pdb","manifest_path":"covbinder_in_pdb/manifest.yml","raw_record_count":10,"record_count":9,"failure_count":1,"failure_reason_counts":{"MISSING_LIGAND_COORDINATES":1}}

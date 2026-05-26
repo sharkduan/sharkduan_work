@@ -1,0 +1,1 @@
+{"schema_version":"1","contract_version":"1.0.0","conflict_group_id":"CONFLICT_M01","anchor":{"pdb_id":"4JKL","target_atom_name":"SG","ligand_atom_name":"C4"},"conflicting_identities":[{"source_database":"covbinder_in_pdb","source_record_id":"CB004"},{"source_database":"covpdb","source_record_id":"CP004"}],"lineage":[],"reason":"LINKAGE_IDENTITY_CONFLICT"}

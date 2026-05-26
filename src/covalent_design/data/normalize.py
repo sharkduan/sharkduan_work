@@ -52,6 +52,8 @@ class NormalizedLinkageRecord:
     source_lineage: SourceRecordLineage
     source_lineages: tuple[SourceRecordLineage, ...]
     atom_mapping: AtomMapping
+    bond_type: str
+    warhead_type: str
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,8 @@ def _build_normalized_record(
         source_lineage=lineages[0] if lineages else lineage,
         source_lineages=tuple(lineages),
         atom_mapping=_atom_mapping(record.metadata.get("atom_mapping")),
+        bond_type=str(record.linkage.get("bond_type", "")),
+        warhead_type=_extract_warhead_type(record),
     )
 
 
@@ -232,6 +236,14 @@ def _atom_mapping(value: object) -> AtomMapping:
         ligand_atom_name="",
         mapping_verified=False,
     )
+
+
+def _extract_warhead_type(record: SourceIngestRecord) -> str:
+    for source in (record.linkage, record.ligand, record.metadata):
+        value = source.get("warhead_type")
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
 
 
 def _representative_record(

@@ -1,0 +1,1 @@
+{"schema_version":"1","contract_version":"1.0.0","conflict_group_id":"CONFLICT_IC01","anchor":{"pdb_id":"5MNO","target_atom_name":"SG"},"conflicting_identities":[{"source_database":"covbinder_in_pdb","source_record_id":"CB005"}],"lineage":[],"reason":"LINKAGE_IDENTITY_CONFLICT"}

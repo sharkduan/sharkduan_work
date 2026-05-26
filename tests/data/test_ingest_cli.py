@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -52,6 +53,62 @@ class IngestCliTests(unittest.TestCase):
         summary = json.loads(result.stdout)
         self.assertFalse(summary["ok"])
         self.assertEqual(summary["errors"][0]["code"], "SOURCE_UNSUPPORTED")
+
+    def test_out_writes_source_records_jsonl_and_ingest_index_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            result = self.run_cli(
+                "--source",
+                "covbinder_in_pdb",
+                "--raw-root",
+                str(FIXTURE_ROOT / "valid"),
+                "--out",
+                str(out_dir),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            records_path = out_dir / "source_records.jsonl"
+            index_path = out_dir / "ingest_index.json"
+            self.assertTrue(records_path.exists(), f"Missing {records_path}")
+            self.assertTrue(index_path.exists(), f"Missing {index_path}")
+
+            records_lines = records_path.read_text("utf-8").strip().splitlines()
+            self.assertEqual(len(records_lines), 10)
+
+            index = json.loads(index_path.read_text("utf-8"))
+            self.assertEqual(index["source_database"], "covbinder_in_pdb")
+            self.assertEqual(index["record_count"], 10)
+            self.assertIn("records", index)
+            self.assertEqual(len(index["records"]), 10)
+
+    def test_out_feeds_normalize_interim_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            ingest_result = self.run_cli(
+                "--source",
+                "covbinder_in_pdb",
+                "--raw-root",
+                str(FIXTURE_ROOT / "valid"),
+                "--out",
+                str(out_dir),
+            )
+            self.assertEqual(ingest_result.returncode, 0, ingest_result.stderr)
+
+            env = os.environ.copy()
+            env["PYTHONPATH"] = "src"
+            normalize_result = subprocess.run(
+                [sys.executable, "-m", "covalent_design.data.normalize", "--interim-root", str(out_dir)],
+                cwd=Path(__file__).resolve().parents[2],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(normalize_result.returncode, 0, normalize_result.stderr)
+            summary = json.loads(normalize_result.stdout)
+            self.assertTrue(summary["ok"])
+            self.assertGreater(summary["input_record_count"], 0)
 
 
 if __name__ == "__main__":

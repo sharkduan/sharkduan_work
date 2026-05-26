@@ -67,8 +67,6 @@ class SourceIngestIndex:
 
 
 def ingest_source(source: str, raw_root: Path, out: Optional[Path] = None) -> ContractEnvelope[SourceIngestIndex]:
-    del out  # Task 5 defines the ingestion contract; downstream artifact writing starts later.
-
     if source not in SUPPORTED_SOURCES:
         index = _empty_index(source, raw_root)
         return _envelope(
@@ -145,7 +143,12 @@ def ingest_source(source: str, raw_root: Path, out: Optional[Path] = None) -> Co
         records=tuple(records),
         failures=tuple(failures),
     )
-    return _envelope(index, artifacts=manifest_envelope.artifacts, errors=())
+
+    artifacts: list[ArtifactRef] = list(manifest_envelope.artifacts)
+    if out is not None:
+        artifacts.extend(_write_out_dir(out, index))
+
+    return _envelope(index, artifacts=tuple(artifacts), errors=())
 
 
 def _parse_source_records(
@@ -257,6 +260,62 @@ def _envelope(
 def _index_hash(index: SourceIngestIndex) -> str:
     payload = json.dumps(asdict(index), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _serialize_record(record: SourceIngestRecord) -> dict[str, object]:
+    result: dict[str, object] = {}
+    result["source_database"] = record.source_database
+    result["source_version"] = record.source_version
+    result["source_record_id"] = record.source_record_id
+    result["raw_manifest_file"] = record.raw_manifest_file
+    result["raw_file_path"] = record.raw_file_path
+    result["raw_file_sha256"] = record.raw_file_sha256
+    result["row_index"] = record.row_index
+    result["lineage"] = dict(record.lineage)
+    result["protein"] = dict(record.protein)
+    result["ligand"] = dict(record.ligand)
+    result["linkage"] = dict(record.linkage)
+    result["metadata"] = dict(record.metadata)
+    if record.source_lineage is not None:
+        result["source_lineage"] = asdict(record.source_lineage)
+    if record.target_atom_identity is not None:
+        result["target_atom_identity"] = asdict(record.target_atom_identity)
+    if record.ligand_atom_identity is not None:
+        result["ligand_atom_identity"] = asdict(record.ligand_atom_identity)
+    return result
+
+
+def _write_out_dir(out: Path, index: SourceIngestIndex) -> list[ArtifactRef]:
+    out.mkdir(parents=True, exist_ok=True)
+
+    serialized_records = [_serialize_record(record) for record in index.records]
+
+    records_path = out / "source_records.jsonl"
+    with records_path.open("w", encoding="utf-8") as handle:
+        for record_dict in serialized_records:
+            handle.write(json.dumps(record_dict, sort_keys=True, ensure_ascii=False))
+            handle.write("\n")
+
+    index_dict: dict[str, object] = {}
+    index_dict["source_database"] = index.source_database
+    index_dict["source_version"] = index.source_version
+    index_dict["complete_for_v1"] = index.complete_for_v1
+    index_dict["raw_root"] = index.raw_root
+    index_dict["manifest_path"] = index.manifest_path
+    index_dict["raw_record_count"] = index.raw_record_count
+    index_dict["record_count"] = index.record_count
+    index_dict["failure_count"] = index.failure_count
+    index_dict["failure_reason_counts"] = dict(index.failure_reason_counts)
+    index_dict["records"] = serialized_records
+    index_dict["failures"] = [asdict(failure) for failure in index.failures]
+
+    index_path = out / "ingest_index.json"
+    index_path.write_text(
+        json.dumps(index_dict, sort_keys=True, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    return []
 
 
 def _target_atom_identity(protein: Mapping[str, object], metadata: Mapping[str, object]) -> ProteinAtomIdentity:

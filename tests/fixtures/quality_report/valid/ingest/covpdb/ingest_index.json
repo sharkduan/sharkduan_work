@@ -1,0 +1,1 @@
+{"source_database":"covpdb","source_version":"2025.1","complete_for_v1":true,"raw_root":"tests/fixtures/quality_report/valid/ingest/covpdb","manifest_path":"covpdb/manifest.yml","raw_record_count":8,"record_count":8,"failure_count":0,"failure_reason_counts":{}}

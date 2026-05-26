@@ -15,6 +15,8 @@ from covalent_design.data.identity import (
 )
 from covalent_design.data.records import build_record_index
 from covalent_design.data.artifact_manifests import finalize_record_manifests
+from covalent_design.data.splits import SplitPolicy, build_splits
+from covalent_design.data.quality_report import write_quality_report
 
 _NORMALIZE_EXPORTS = {
     "AcceptedRecord",
@@ -53,12 +55,15 @@ __all__ = [
     "QualityGateResult",
     "RejectedIdentityInput",
     "RejectedRecord",
+    "SplitPolicy",
     "build_record_id",
     "build_record_index",
+    "build_splits",
     "canonical_identity_from_record",
     "finalize_record_manifests",
     "normalize_identity_json",
     "normalize_linkages",
     "normalize_with_identity_resolution",
     "resolve_identities",
+    "write_quality_report",
 ]
