@@ -1,4 +1,4 @@
-# Interface Design: Covalent Design Modules
+﻿# Interface Design: Covalent Design Modules
 
 ## Status
 
@@ -142,6 +142,124 @@ Shared contracts define:
 - `EvaluationSummary`
 - `DockingProtocolManifest`
 - `SamplingSystemFailure`
+- `SplitPolicy`
+- `SplitIndex` (JSON envelope)
+- `ScaffoldKeyRecord` (JSONL artifact)
+- `LeakageReport` (JSON envelope)
+- `FallbackAccounting` (JSON envelope)
+- `ManualReviewIndex` (JSON envelope)
+
+### Split Contracts
+
+```python
+@dataclass(frozen=True)
+class SplitPolicy:
+    algorithm: str                                # "leakage_aware_covalent_splits"
+    algorithm_version: str                        # "1.0.0"
+    random_seed: int                              # 42
+    split_ratios: Mapping[str, float]             # {"train": 0.80, "val": 0.10, "test": 0.10}
+```
+
+`SplitPolicy` is serialised into `split_index.json` under the `split_policy` key. It carries algorithm provenance and randomisation controls. The default is an 80/10/10 ratio with seed 42 and algorithm `leakage_aware_covalent_splits`.
+
+### SplitIndex
+
+`split_index.json` is a JSON envelope (not a frozen dataclass). Its top-level keys:
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `role` 鈥?`"split_index"`
+- `split_policy` 鈥?embedded `SplitPolicy` dict
+- `assignment_count` 鈥?number of assignment entries
+- `assignments` 鈥?list of per-record assignment objects
+
+Each assignment entry has these required keys:
+
+- `record_id` (str)
+- `split` (str) 鈥?one of `"train"`, `"val"`, `"test"`, `"excluded"`
+- `scaffold_key` (str | null)
+- `protein_cluster_id` (str | null)
+- `residue_reaction_family` (str)
+- `fallback_reason` (str | null)
+- `manual_review_status` (str | null)
+
+### ScaffoldKeyRecord
+
+`scaffold_keys.jsonl` contains one JSON object per record. Each object has these required fields:
+
+```python
+{
+    "schema_version": str,         # "1"
+    "contract_version": str,       # "1.0.0"
+    "record_id": str,
+    "role": str,                   # "scaffold_key"
+    "algorithm": str,              # "fixture_key" (until chemistry library accepted)
+    "algorithm_version": str,      # "1.0.0"
+    "warhead_match": {
+        "matched": bool,
+        "warhead_type": str | None,
+        "warhead_smarts": str | None,      # deferred until chemistry library accepted
+        "removed_atom_indices": list[int]  # empty until chemistry library accepted
+    },
+    "scaffold_key": str | None,    # null when fallback_reason is set
+    "fallback_reason": str | None  # null when scaffold_key produced successfully
+}
+```
+
+`algorithm` is `"fixture_key"` until a user-accepted chemistry library (e.g. RDKit Bemis-Murcko) is available 鈥?see `docs/specs/key-design-decisions.md`.
+
+### LeakageReport
+
+`leakage_report.json` is a JSON envelope with these required keys:
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `role` 鈥?`"leakage_report"`
+- `record_count` 鈥?total assignment count
+- `train_count`, `val_count`, `test_count`, `excluded_count` 鈥?per-split record counts
+- `fallback_count` 鈥?total records with a fallback reason
+- `fallback_by_reason` 鈥?`{reason: count}` mapping
+- `manual_review_count` 鈥?total records under manual review
+- `scaffold_overlaps` 鈥?list of `{scaffold_key, overlapping_splits, record_ids}` for violated scaffolds
+- `protein_cluster_overlaps` 鈥?list of `{protein_cluster_id, overlapping_splits, record_ids}` for violated clusters
+- `zero_overlap` 鈥?`{"scaffold": bool, "protein_cluster": bool}` indicating whether overlaps are absent
+
+### FallbackAccounting
+
+`fallback_accounting.json` is a JSON envelope with these required keys:
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `role` 鈥?`"fallback_accounting"`
+- `fallback_count` 鈥?total fallback records
+- `fallback_by_reason` 鈥?`{reason: {"count": int, "record_ids": [str]}}` mapping
+
+### ManualReviewIndex
+
+`manual_review_index.json` is a JSON envelope with these required keys:
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `role` 鈥?`"manual_review_index"`
+- `review_count` 鈥?number of records under review
+- `reviewed_records` 鈥?list of `{record_id, split, fallback_reason, manual_review_status}`
+
+`reviewer`, `reviewed_at` (ISO 8601), and `notes` fields are deferred until a manual review workflow is established 鈥?see `docs/specs/key-design-decisions.md`. They will be additive (minor version) additions to the `reviewed_records` entries.
+
+`fallback_reason` values (this is the minimal v1 enum):
+
+- `warhead_unmatched` 鈥?warhead SMARTS did not match the ligand; scaffold key could not be derived
+- `missing_scaffold_input` 鈥?required core_labels fields for scaffold key derivation are absent
+- `missing_protein_cluster_input` 鈥?no protein cluster identifier available in metadata
+- `manual_review_override` 鈥?record was manually reviewed and the override status controls assignment
+
+`manual_review_status` values:
+
+- `pending` 鈥?review has not been performed
+- `approved` 鈥?reviewer approved the record for primary split metrics
+- `rejected` 鈥?reviewer excluded the record
+
+`reviewer`, `reviewed_at` (ISO 8601), and `notes` fields are deferred until a manual review workflow is established. They will be added as optional fields on `reviewed_records` entries in `manual_review_index.json` (minor version change).
 
 Enums and status values must be imported from `contracts`; modules must not redeclare string literals locally.
 
@@ -178,6 +296,13 @@ def ingest_source(
     raw_root: Path,
     out: Path,
 ) -> ContractEnvelope["SourceIngestIndex"]: ...
+    """Ingest a single source and write source records and an ingest index.
+
+    Writes ``source_records.jsonl`` and ``ingest_index.json`` under
+    ``out``.  The output directory is compatible with
+    ``normalize --interim-root`` so the documented CLI pipeline can
+    be executed end-to-end.
+    """
 
 def normalize_linkages(
     records: tuple[SourceIngestRecord, ...],
@@ -208,7 +333,7 @@ def build_record_index(
 
     Missing a required non-edge artifact role (protein_atom_table,
     ligand_atom_table, ligand_bond_table, or coordinates) is a hard
-    validation failure — the envelope returns ``passed=False`` with
+    validation failure 鈥?the envelope returns ``passed=False`` with
     structured ``ContractErrorInfo`` entries and no partial output.
     """
 
@@ -231,13 +356,63 @@ def build_edge_candidates(
     ``ContractErrorInfo`` entries and the envelope returns ``ok=False``.
 
     This function does **not** update ``records.jsonl`` or
-    ``artifact_manifest.json`` — that finalization is Task 13 scope.
+    ``artifact_manifest.json`` 鈥?that finalization is Task 13 scope.
     """
 
 def build_splits(
-    records: "RecordIndex",
-    policy: "SplitPolicy",
-) -> ContractEnvelope["SplitIndex"]: ...
+    records_path: Path,
+    out_root: Path,
+    policy: "SplitPolicy | None" = None,
+) -> ContractEnvelope[list[dict]]: ...
+    """Build leakage-aware train/val/test splits.
+
+    Reads finalized Task 13 ``records.jsonl`` (accepted records with
+    ``core_labels`` and artifact refs including ``edge_candidates``).
+    Writes split artifacts under ``out_root`` without mutating
+    ``records.jsonl`` or ``artifact_manifest.json``.
+
+    Required ``core_labels`` fields: ``bond_type``, ``warhead_type``,
+    ``residue_reaction_family``, ``pdb_id``.
+
+    Optional metadata fields used when present:
+      - ``protein_cluster_id`` 鈥?for protein cluster integrity enforcement
+      - ``manual_review_status`` 鈥?for manual review override logic
+      - ``scaffold_key`` 鈥?precomputed scaffold key (bypasses derivation)
+
+    Output artifacts:
+      - ``split_index.json`` 鈥?split assignments with per-record metadata
+      - ``scaffold_keys.jsonl`` 鈥?per-record scaffold key artifacts with
+        algorithm metadata, warhead evidence, and fallback reason
+      - ``leakage_report.json`` 鈥?overlap diagnostics across splits with
+        scaffold and protein_cluster zero-overlap flags
+      - ``fallback_accounting.json`` 鈥?per-reason counts and record_ids for
+        records excluded from primary split metrics
+      - ``manual_review_index.json`` 鈥?records flagged for manual review
+        with ``manual_review_status``
+
+    Default ``SplitPolicy``:
+      - algorithm: ``"leakage_aware_covalent_splits"``
+      - algorithm_version: ``"1.0.0"``
+      - random_seed: ``42``
+      - split_ratios: ``{"train": 0.80, "val": 0.10, "test": 0.10}``
+
+    Scaffold key derivation uses ``algorithm: "fixture_key"`` (metadata-based
+    hashing of core_labels fields) until a user-accepted chemistry library is
+    available.  Precomputed ``scaffold_key`` values from ``metadata`` are
+    accepted as an override.
+
+    Protein clustering enforces that records sharing a ``protein_cluster_id``
+    reside in the same split.  Records missing ``protein_cluster_id`` receive
+    fallback reason ``missing_protein_cluster_input`` and are excluded.
+    Real clustering authority (sequence identity, UniProt mapping) is a
+    deferred user decision.
+
+    Core invariants:
+      - Zero primary scaffold overlap across train/val/test.
+      - Zero protein-cluster overlap across train/val/test.
+      - accepted_record_count == train + val + test + excluded.
+      - Input ``records.jsonl`` and ``artifact_manifest.json`` are never mutated.
+    """
 
 def finalize_record_manifests(
     records_path: Path,
@@ -254,28 +429,80 @@ def finalize_record_manifests(
     Hard failures (no partial writes to ``records.jsonl`` or
     ``artifact_manifest.json``):
 
-    * ``EDGE_CANDIDATE_ARTIFACT_MISSING`` — ``edge_candidates.json`` not found for a record
-    * ``EDGE_CANDIDATE_ARTIFACT_DUPLICATE`` — an ``edge_candidates`` artifact ref is
+    * ``EDGE_CANDIDATE_ARTIFACT_MISSING`` 鈥?``edge_candidates.json`` not found for a record
+    * ``EDGE_CANDIDATE_ARTIFACT_DUPLICATE`` 鈥?an ``edge_candidates`` artifact ref is
       already present in the record or manifest (re-run guard)
-    * ``EDGE_CANDIDATE_RECORD_ID_MISMATCH`` / ``EDGE_CANDIDATE_ROLE_INVALID`` —
-      ``edge_candidates.json`` does not identify the accepted record or role it is
+    * ``EDGE_CANDIDATE_RECORD_ID_MISMATCH`` / ``EDGE_CANDIDATE_ROLE_INVALID`` 鈥?      ``edge_candidates.json`` does not identify the accepted record or role it is
       linked to
-    * ``EDGE_CANDIDATE_UNREADABLE`` — ``edge_candidates.json`` cannot be parsed
+    * ``EDGE_CANDIDATE_UNREADABLE`` 鈥?``edge_candidates.json`` cannot be parsed
     * Checksum mismatches in any embedded artifact ref inside ``edge_candidates.json``
-    * ``ARTIFACT_MANIFEST_OBSOLETE_UNLINKED`` — manifest contains entries for record
+    * ``ARTIFACT_MANIFEST_OBSOLETE_UNLINKED`` 鈥?manifest contains entries for record
       ids not present in ``records.jsonl``
 
     On success, appends the ``edge_candidates`` ref to each record's ``artifacts``
     list and updates ``artifact_manifest.json``.  Writes are deterministic across
     repeated runs with identical inputs.  This function does **not** generate edge
-    candidates, splits, visual checks, or quality reports — those are Task 12,
+    candidates, splits, visual checks, or quality reports 鈥?those are Task 12,
     Task 14, Task 15, and Task 16 scope respectively.
     """
 
+def export_visual_checks(
+    records_path: Path,
+    out_root: Path,
+    sample_count: int | None = None,
+    seed: int = 42,
+) -> ContractEnvelope["VisualCheckIndex"]: ...
+    """Sample accepted records and export visual inspection artifacts.
+
+    Reads ``records_path`` (a JSONL of accepted ``CovalentComplexRecord`` rows
+    with artifact refs including ``edge_candidates``).  Samples up to
+    ``sample_count`` records deterministically using ``seed``.  When
+    ``sample_count`` is ``None``, all accepted records are sampled.
+
+    Writes under ``out_root``:
+      - ``visual_check_index.json`` 鈥?a ``VisualCheckIndex`` envelope
+      - ``artifacts/<record_id>/visual_check.json`` 鈥?one per-record
+        ``VisualCheckRecord`` artifact
+
+    Sampling is deterministic: given the same input records (sorted by
+    ``record_id``), same ``sample_count``, and same ``seed``, the selected
+    subset is identical across runs.
+
+    This function does **not** generate an ETL quality report 鈥?that is
+    Task 16 scope.
+    """
+
 def write_quality_report(
-    bundle: "RecordBundle",
-    out: Path,
-) -> ContractEnvelope["EtlQualityReport"]: ...
+    processed_root: Path,
+    *,
+    ingest_roots: Optional[list[Path]] = None,
+    splits_root: Optional[Path] = None,
+    visual_checks_root: Optional[Path] = None,
+    out_path: Optional[Path] = None,
+) -> ContractEnvelope[dict]: ...
+    """Produce the ETL quality report reconciling sources, records, candidates,
+    splits, and visual checks.
+
+    Reads ``records.jsonl``, ``rejected_index.jsonl``, and
+    ``conflict_index.jsonl`` from ``processed_root``.  Discovers per-record
+    ``edge_candidates.json`` artifacts under
+    ``processed_root/artifacts/<record_id>/``.
+
+    When ``ingest_roots`` is provided, reads ``ingest_index.json`` from each
+    root to populate ``source_coverage`` with per-source ``complete_for_v1``,
+    ``record_count``, and ``failure_count``.
+
+    When ``splits_root`` is provided, reads ``split_index.json`` to populate
+    ``split_stats`` (train/val/test/excluded/fallback counts).
+
+    When ``visual_checks_root`` is provided, reads ``visual_check_index.json``
+    to populate ``visual_check_summary`` and derive ``visual_blocked_count``
+    from ``blocking_counts.blocking_first_core``.
+
+    Writes the report JSON to ``out_path`` when provided.  Returns a
+    ``ContractEnvelope`` whose payload is the full report dict and whose
+    ``receipt.ok`` reflects reconciliation status.
+    """
 ```
 
 ### CLI
@@ -291,8 +518,9 @@ python -m covalent_design.data.normalize --interim-root data/interim --out data/
 python -m covalent_design.data.build_record_index --processed-root data/processed
 python -m covalent_design.candidates.cli.build_edge_candidates --records <records.jsonl> --radius 4.0
 python -m covalent_design.data.cli.finalize_record_manifests --records <records.jsonl>
-python -m covalent_design.data.build_splits --records data/processed/covalent_complex_records/records.jsonl
-python -m covalent_design.data.write_quality_report --out data/reports/etl_quality_report.md
+python -m covalent_design.data.cli.build_splits --records <records.jsonl> --policy <policy.json> --out-root <out_root>
+python -m covalent_design.viz.cli.export_visual_checks --records <records.jsonl> --out-root <out_root> [--sample-count N] [--seed 42]
+python -m covalent_design.data.cli.write_quality_report --processed-root <processed_root> [--ingest-roots <dir> ...] [--splits-root <dir>] [--visual-checks-root <dir>] [--out <path>]
 ```
 
 ### Artifact Boundary
@@ -308,16 +536,27 @@ Missing any of these four roles is a hard validation failure. `edge_candidates`,
 
 Task 13 appends the `edge_candidates` artifact role to each accepted record and to `artifact_manifest.json`. After finalization, every accepted record has exactly five artifact roles. Task 13 validates embedded artifact refs inside `edge_candidates.json` and fails hard on missing files, checksum mismatches, duplicate edge-candidate refs, and obsolete unlinked manifest entries. No partial writes occur on error.
 
+Task 14 consumes finalized Task 13 `records.jsonl` and writes separate split artifacts under `--out-root`. It must not mutate `records.jsonl` or `artifact_manifest.json`. Required input fields: `record_id`, `core_labels` (including `bond_type`, `warhead_type`, `residue_reaction_family`, `pdb_id`), and non-edge artifact refs (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, `coordinates`). Optional input fields: `protein_cluster_id` (used when present; records missing it fall back with `missing_protein_cluster_input`), `manual_review_status` (from metadata; used for review override logic), and `scaffold_key` (precomputed key from metadata; bypasses derivation). Output artifacts: `split_index.json` (assignments with per-record split, scaffold_key, protein_cluster_id, residue_reaction_family, fallback_reason, manual_review_status), `scaffold_keys.jsonl` (per-record scaffold key artifacts with `warhead_match` sub-object), `leakage_report.json` (overlap lists with zero_overlap flags), `fallback_accounting.json` (per-reason record_id lists), `manual_review_index.json` (reviewed records with status).
+
+Task 15 consumes finalized Task 13 `records.jsonl` (accepted records with artifact refs including `edge_candidates`) and writes separate visual check artifacts under `--out-root`. It must not mutate `records.jsonl` or `artifact_manifest.json`. Sampling is deterministic by `record_id` sort order with a configurable `--seed` (default 42). Output artifacts: `visual_check_index.json` (index with sample policy, status counts, blocking counts, and per-record entries with artifact refs) and `artifacts/<record_id>/visual_check.json` (per-record artifacts with target atom, ligand attachment atom, covalent edge, residue-reaction family, warhead annotation, optional distance/local angles, status, and `blocking_first_core` flag). Task 15 does not generate an ETL quality report 鈥?that is Task 16 scope.
+
+Scaffold key generation requires a user-approved chemistry implementation or library. Until one is accepted, fixtures may use precomputed scaffold keys. This is recorded as an unresolved user decision (see `docs/specs/key-design-decisions.md`).
+
 Rejected records and conflict groups are separate indexes (`rejected_index.jsonl`, `conflict_index.jsonl`). They are not iterable as accepted `CovalentComplexRecord` values unless explicitly requested through a rejected/conflict API.
 
 ### Misuse Guards
 
 - `build_record_id()` recalculates deterministic ids from canonical linkage identity; caller-supplied ids are verified, not trusted.
 - `QualitySeverity` and CovalentInDB source-field priority are different enum types.
-- Missing a required non-edge artifact role (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, or `coordinates`) produces a hard validation failure with structured `ContractErrorInfo` entries — accepted records must never be silently skipped.
+- Missing a required non-edge artifact role (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, or `coordinates`) produces a hard validation failure with structured `ContractErrorInfo` entries 鈥?accepted records must never be silently skipped.
 - `empty_radius_window` is a valid negative-sampling status, not a candidate-build failure (Task 12).
 - `finalize_record_manifests()` fails hard if any accepted record lacks an `edge_candidates.json` artifact, if embedded artifact ref checksums do not match, if an `edge_candidates` ref is already present (duplicate), or if `artifact_manifest.json` contains entries not linked to any accepted record. No partial writes occur on error (Task 13).
-- Visual check `fail` or `needs_rule_review` blocks sampled records from first-core release until resolved (Task 15).
+- Visual check `pending`, `fail`, and `needs_rule_review` all block sampled records from first-core release until resolved; only `pass` is non-blocking (Task 15).
+- Split artifacts must not mutate `records.jsonl` or `artifact_manifest.json`; splits write separate artifacts under a dedicated output root.
+- Scaffold key generation uses `algorithm: "fixture_key"` (metadata-based hashing) until a user-accepted chemistry library is available; precomputed `scaffold_key` values from `metadata` are accepted as overrides. The algorithm/library decision remains open (see `docs/specs/key-design-decisions.md`).
+- Protein clustering for the primary split uses `protein_cluster_id` when present; records missing it are excluded with `missing_protein_cluster_input`. Real clustering authority (sequence identity, UniProt mapping) is a deferred user decision.
+- `fallback_reason` records with `manual_review_status = "approved"` may enter primary scaffold metrics; `pending` and `rejected` records are excluded.
+- `reviewer`, `reviewed_at`, and `notes` fields on manual review entries are deferred until a manual review workflow is established.
 
 ## Rules And Candidate Interfaces
 
@@ -366,24 +605,253 @@ python -m covalent_design.rules.cli.build_calibration_sheet --records <records.j
 
 `build_calibration_sheet` generates a per-family CSV review sheet from `records.jsonl` and the rule table. The CSV has 14 columns:
 
-- `family_id` — reaction family identifier matching the rule table.
-- `sample_count` — number of accepted records for this family.
-- `representative_record_ids` — JSON-serialized sorted list of record_ids.
-- `target_atom_distribution` — JSON-serialized frequency of target atom names.
-- `ligand_attachment_element_distribution` — JSON-serialized frequency of ligand attachment element symbols (from `core_labels.ligand_atom_element`).
-- `warhead_distribution` — JSON-serialized frequency of `warhead_type` values.
-- `bond_length_summary` — min/max/mean summary of bond lengths from `metadata.geometry`.
-- `protein_side_angle_summary` — min/max/mean summary of protein-side angles from `metadata.geometry`.
-- `ligand_side_angle_summary` — min/max/mean summary of ligand-side angles from `metadata.geometry`.
-- `outlier_record_ids` — empty `[]` placeholder for manual review entries.
-- `manual_decision` — empty string for manual review entries.
-- `notes` — rule table notes or "No accepted samples in current dataset." for zero-sample families.
-- `pending_smarts_marker` — `"pending"` when the rule table `warhead_rule_status` is `pending` or `allowed_warhead_smarts` is empty; `"calibrated"` when `warhead_rule_status` is `calibrated` with non-empty SMARTS.
-- `pending_geometry_marker` — `"pending"` when any of `bond_length`, `protein_side_angle`, or `ligand_side_angle` geometry status is not `calibrated`; `"calibrated"` when all three are explicitly calibrated.
+- `family_id` 鈥?reaction family identifier matching the rule table.
+- `sample_count` 鈥?number of accepted records for this family.
+- `representative_record_ids` 鈥?JSON-serialized sorted list of record_ids.
+- `target_atom_distribution` 鈥?JSON-serialized frequency of target atom names.
+- `ligand_attachment_element_distribution` 鈥?JSON-serialized frequency of ligand attachment element symbols (from `core_labels.ligand_atom_element`).
+- `warhead_distribution` 鈥?JSON-serialized frequency of `warhead_type` values.
+- `bond_length_summary` 鈥?min/max/mean summary of bond lengths from `metadata.geometry`.
+- `protein_side_angle_summary` 鈥?min/max/mean summary of protein-side angles from `metadata.geometry`.
+- `ligand_side_angle_summary` 鈥?min/max/mean summary of ligand-side angles from `metadata.geometry`.
+- `outlier_record_ids` 鈥?empty `[]` placeholder for manual review entries.
+- `manual_decision` 鈥?empty string for manual review entries.
+- `notes` 鈥?rule table notes or "No accepted samples in current dataset." for zero-sample families.
+- `pending_smarts_marker` 鈥?`"pending"` when the rule table `warhead_rule_status` is `pending` or `allowed_warhead_smarts` is empty; `"calibrated"` when `warhead_rule_status` is `calibrated` with non-empty SMARTS.
+- `pending_geometry_marker` 鈥?`"pending"` when any of `bond_length`, `protein_side_angle`, or `ligand_side_angle` geometry status is not `calibrated`; `"calibrated"` when all three are explicitly calibrated.
 
-Geometry summaries read pre-computed values from `records.jsonl` entries under `metadata.geometry.{bond_length, protein_side_angle, ligand_side_angle}.value`. No 3D coordinate re-computation is performed. No `edge_candidates` files, directories, or artifact roles are generated — edge candidates are Task 12 scope.
+Geometry summaries read pre-computed values from `records.jsonl` entries under `metadata.geometry.{bond_length, protein_side_angle, ligand_side_angle}.value`. No 3D coordinate re-computation is performed. No `edge_candidates` files, directories, or artifact roles are generated 鈥?edge candidates are Task 12 scope.
 
 Families with zero accepted records still produce a row with `sample_count=0`, empty distributions, and notes indicating no accepted samples. Output is byte-deterministic across repeated runs with identical inputs.
+
+## Visual Checks Interfaces
+
+### Python API
+
+```python
+def export_visual_checks(
+    records_path: Path,
+    out_root: Path,
+    sample_count: int | None = None,
+    seed: int = 42,
+) -> ContractEnvelope["VisualCheckIndex"]: ...
+```
+
+### CLI
+
+```bash
+python -m covalent_design.viz.cli.export_visual_checks --records <records.jsonl> --out-root <out_root> [--sample-count N] [--seed 42]
+```
+
+### Output Artifacts
+
+`visual_check_index.json` (JSON envelope) written at `<out_root>/visual_check_index.json`:
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `role` 鈥?`"visual_check_index"`
+- `sample_policy` 鈥?`{"sample_count": N | null, "seed": 42, "total_accepted": N}`
+- `status_counts` 鈥?`{"pending": N, "pass": N, "fail": N, "needs_rule_review": N}`
+- `blocking_counts` 鈥?`{"blocking_first_core": N, "non_blocking": N}`
+- `records` 鈥?list of per-record index entries, each with `record_id`, `status`, `blocking_first_core`, and `artifact_ref` (an `ArtifactRef` pointing to `artifacts/<record_id>/visual_check.json`)
+
+Per-record artifacts at `<out_root>/artifacts/<record_id>/visual_check.json`:
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `record_id` 鈥?str
+- `role` 鈥?`"visual_check"`
+- `target_atom` 鈥?`ProteinAtomIdentity` dict
+- `ligand_attachment_atom` 鈥?`LigandAtomIdentity` dict
+- `covalent_edge` 鈥?`{target_atom, ligand_atom, bond_type, bond_length}` (from `edge_candidates` positive edge)
+- `residue_reaction_family` 鈥?str
+- `warhead_annotation` 鈥?`{warhead_type, warhead_smarts | null}`
+- `distance` 鈥?float | null (bond length in angstroms, from `metadata.geometry.bond_length.value`)
+- `local_angles` 鈥?`{protein_side: float | null, ligand_side: float | null}` | null (from `metadata.geometry`)
+- `status` 鈥?one of `"pending"`, `"pass"`, `"fail"`, `"needs_rule_review"`
+- `blocking_first_core` 鈥?bool
+
+### Status Values And Gate Semantics
+
+| Status | Blocks first-core release? | Meaning |
+| --- | --- | --- |
+| `pending` | Yes (until reviewed) | Visual check not yet performed |
+| `pass` | No | Visual inspection passed; record eligible |
+| `fail` | Yes | Structural or annotation defect confirmed |
+| `needs_rule_review` | Yes (until rule decision) | Rule table cannot decide; requires curator input |
+
+`blocking_first_core` is `true` for `pending`, `fail`, and `needs_rule_review`; `false` only for `pass`.
+
+### Optional Geometry Policy
+
+- `distance` and `local_angles` fields are populated from `metadata.geometry` when available.
+- Missing geometry values are written as `null` 鈥?this is valid output, not a failure.
+- Geometry presence/absence does not affect `status` assignment. Task 15 does not infer `pass`, `fail`, or `needs_rule_review`; it reads `metadata.visual_check_status` when present and otherwise initializes sampled records as `pending`. Manual review or a later explicit review workflow is responsible for changing status values before first-core release.
+
+### Deterministic Sampling Policy
+
+- Records are sorted by `record_id` before sampling.
+- Given identical inputs (same `records_path` content, same `sample_count`, same `seed`), the selected subset and all output files are byte-deterministic across repeated runs.
+- When `sample_count` is `None`, all accepted records are included.
+
+### Task Boundary
+
+Task 15 does **not** generate an ETL quality report. The quality report that reconciles sources, records, candidates, splits, and visual checks is Task 16 scope. Visual check artifacts are consumed by the Task 16 report, not produced by it.
+
+## ETL Quality Report Interfaces
+
+### Python API
+
+```python
+def write_quality_report(
+    processed_root: Path,
+    *,
+    ingest_roots: list[Path] | None = None,
+    splits_root: Path | None = None,
+    visual_checks_root: Path | None = None,
+    out_path: Path | None = None,
+) -> ContractEnvelope[dict]: ...
+```
+
+### CLI
+
+```bash
+python -m covalent_design.data.cli.write_quality_report \
+    --processed-root <processed_root> \
+    [--ingest-roots <dir> ...] \
+    [--splits-root <dir>] \
+    [--visual-checks-root <dir>] \
+    [--out <path>]
+```
+
+`--ingest-roots` may be repeated for each source root containing `ingest_index.json`.
+
+### Output: ETLQualityReport Schema
+
+`write_quality_report` produces a JSON envelope with role `"quality_report"`. The payload is the report dict with the following sections:
+
+**Top-level envelope fields:**
+
+- `schema_version` 鈥?`"1"`
+- `contract_version` 鈥?`"1.0.0"`
+- `role` 鈥?`"quality_report"`
+
+**`source_coverage`** 鈥?`{source_name: {complete_for_v1, record_count, failure_count}}` dict. Populated from each `--ingest-roots` entry's `ingest_index.json`. When an ingest root lacks `ingest_index.json`, the source is reported with `complete_for_v1: false`, `record_count: 0`, `failure_count: 0`, and `missing_ingest_index: true`. When the index file exists but is unreadable, `unreadable_ingest_index: true` is set instead.
+
+**`reconciliation`** 鈥?dict with these keys:
+
+- `accepted_count` 鈥?from `records.jsonl` row count
+- `rejected_count` 鈥?from `rejected_index.jsonl` row count
+- `conflict_count` 鈥?from `conflict_index.jsonl` row count
+- `visual_blocked_count` 鈥?from `visual_check_index.json` 鈫?`blocking_counts.blocking_first_core`; records blocked from first-core release by visual check status (`pending`, `fail`, `needs_rule_review`)
+- `total_accounted` 鈥?`accepted_count + rejected_count + conflict_count`
+- `all_sources_complete_for_v1` 鈥?`true` when every provided source reports `complete_for_v1: true`; also `true` when no `ingest_roots` are provided
+- `candidate_coverage_ok` 鈥?`true` when candidate artifact coverage matches `accepted_count`
+- `split_counts_match` 鈥?`true` when provided split totals match `accepted_count`
+- `visual_counts_match` 鈥?`true` when provided visual status and blocking totals are internally consistent and match `accepted_count`
+- `reconciled` 鈥?`candidate_coverage_ok and split_counts_match and visual_counts_match`; incomplete source coverage is reported separately as `SOURCE_COVERAGE_INCOMPLETE`
+
+**`family_distribution`** 鈥?`{residue_reaction_family: count}` from `core_labels.residue_reaction_family` across accepted records.
+
+**`residue_distribution`** 鈥?`{residue_token: count}` derived by splitting `residue_reaction_family` on `"_"` and taking the first element (e.g. `CYS_Michael_addition` 鈫?`CYS`).
+
+**`warhead_distribution`** 鈥?`{warhead_type: count}` from `core_labels.warhead_type` across accepted records.
+
+**`linkage_quality`** 鈥?dict with:
+
+- `bond_type_distribution` 鈥?`{bond_type: count}` from `core_labels.bond_type`
+- `linkage_count_distribution` 鈥?always `{"1": accepted_count}` for monodentate-only v1
+
+**`geometry_quality`** 鈥?dict with:
+
+- `bond_length` 鈥?`{min, max, mean, count}` stats from `metadata.geometry.bond_length.value`
+- `protein_side_angle` 鈥?`{min, max, mean, count}` stats from `metadata.geometry.protein_side_angle.value`
+- `ligand_side_angle` 鈥?`{min, max, mean, count}` stats from `metadata.geometry.ligand_side_angle.value`
+- `records_missing_geometry` 鈥?count of accepted records with no geometry values
+
+Each stat is `{"min": null, "max": null, "mean": null, "count": 0}` when no values are available.
+
+**`protein_chemical_state_quality`** 鈥?dict with:
+
+- `explicit_state_count` 鈥?records with `metadata.protein_chemical_state == "explicit"`
+- `inferred_state_count` 鈥?records with `metadata.protein_chemical_state == "inferred"`
+- `records_with_inferred_state` 鈥?list of `record_id` strings for inferred-state records
+
+**`candidate_stats`** 鈥?dict aggregated from `edge_candidates.json` artifacts:
+
+- `total_candidates` 鈥?sum of `denominators.candidate_count` across all records
+- `total_natural_candidates` 鈥?sum of `denominators.natural_candidate_count`
+- `total_forced_positives` 鈥?sum of `denominators.forced_positive_count`
+- `empty_radius_window_count` 鈥?count of records where `empty_radius_window: true`
+- `record_count` 鈥?number of records that have a readable `edge_candidates.json`
+
+**`split_stats`** (present when `--splits-root` is provided) 鈥?dict with:
+
+- `train_count`, `val_count`, `test_count`, `excluded_count` 鈥?per-split assignment counts from `split_index.json`
+- `fallback_count` 鈥?number of assignments with a `fallback_reason`
+
+**`visual_check_summary`** (present when `--visual-checks-root` is provided) 鈥?dict with:
+
+- `sampled_count` 鈥?number of records in `visual_check_index.json`
+- `total_accepted` 鈥?from `sample_policy.total_accepted`
+- `status_counts` 鈥?`{pending, pass, fail, needs_rule_review}` counts
+- `blocking_counts` 鈥?`{blocking_first_core, non_blocking}` counts
+
+If `rejected_index.jsonl`, `conflict_index.jsonl`, or a provided `visual_check_index.json` exists but cannot be parsed, Task 16 returns a structured data error (`REJECTED_INDEX_UNREADABLE`, `CONFLICT_INDEX_UNREADABLE`, or `VISUAL_CHECK_INDEX_UNREADABLE`) instead of silently treating the corresponding counts as zero.
+
+**`quality_tier_distribution`** 鈥?`{quality_tier: count}` from `metadata.quality.quality_tier` across accepted records.
+
+### Count Reconciliation Equations
+
+```text
+total_accounted = accepted_count + rejected_count + conflict_count
+all_sources_complete_for_v1 = all(complete_for_v1 for every provided source)
+visual_blocked_count = blocking_counts.blocking_first_core
+candidate_coverage_ok = candidate_stats.record_count == accepted_count
+split_counts_match = train_count + val_count + test_count + excluded_count == accepted_count  # when splits_root is provided
+visual_counts_match = visual_total_accepted == accepted_count and status_total == sampled_count and blocking_total + non_blocking_total == sampled_count
+reconciled = candidate_coverage_ok and split_counts_match and visual_counts_match
+```
+
+`visual_blocked_count` counts records that are blocked from first-core release by visual check status. It is derived from `visual_check_index.json` 鈫?`blocking_counts.blocking_first_core`, which is the number of sampled records whose `blocking_first_core` is `true` (status is `pending`, `fail`, or `needs_rule_review`).
+
+Incomplete source coverage gates the all-source ETL release through `all_sources_complete_for_v1`; when it is `false`, the receipt includes a `SOURCE_COVERAGE_INCOMPLETE` structured error (`owner: "data"`). Count reconciliation failures are represented by `reconciled: false` and produce `COUNT_RECONCILIATION_FAILED`.
+
+### Task 16 Reconciliation Clarification
+
+`complete_for_v1` is a per-source coverage signal. It is reported as `all_sources_complete_for_v1` in the reconciliation section and may produce `SOURCE_COVERAGE_INCOMPLETE`, but it is not the count reconciliation equation itself.
+
+Task 16 count reconciliation is explicit:
+
+```text
+total_accounted = accepted_count + rejected_count + conflict_count
+candidate_coverage_ok = candidate_stats.record_count == accepted_count
+split_counts_match = train_count + val_count + test_count + excluded_count == accepted_count  # when splits_root is provided
+visual_counts_match = visual_total_accepted == accepted_count and status_total == sampled_count and blocking_total + non_blocking_total == sampled_count
+reconciled = candidate_coverage_ok and split_counts_match and visual_counts_match
+```
+
+If any count equation fails, the receipt includes `COUNT_RECONCILIATION_FAILED`.
+
+### Data Release Gate Relationship
+
+The ETL quality report is the **Data Release Gate** artifact (Checkpoint A). It aggregates every ETL task output (Tasks 1鈥?6) into a single auditable JSON envelope. Before model training begins:
+
+- All sources must report `complete_for_v1: true` 鈫?`all_sources_complete_for_v1: true`.
+- `visual_blocked_count` must be zero (no sampled records blocked by `pending`, `fail`, or `needs_rule_review` status).
+- `total_accounted` must be non-zero.
+- The report JSON must be byte-deterministic across repeated runs with identical inputs.
+- `complete_for_v1` coverage and `reconciled` count equations must both pass; neither one substitutes for the other.
+
+The report is consumed by downstream governance checks and manual review; it does not produce model, training, or inference artifacts.
+
+### Misuse Guards
+
+- The report writes a single JSON file; it does not modify `records.jsonl`, `artifact_manifest.json`, `split_index.json`, or `visual_check_index.json`.
+- Missing `records.jsonl` returns `receipt.ok=False` with `RECORDS_FILE_NOT_FOUND`.
+- Unreadable `records.jsonl` returns `receipt.ok=False` with `RECORDS_UNREADABLE`.
+- Missing `edge_candidates.json` for a record is silently skipped in `candidate_stats` (the record count reflects only records with readable artifacts).
+- No model, training, or inference artifacts are generated.
 
 ## Model Interfaces
 
