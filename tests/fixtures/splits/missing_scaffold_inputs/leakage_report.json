@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "role": "leakage_report",
+  "record_count": 4,
+  "train_count": 1,
+  "val_count": 0,
+  "test_count": 1,
+  "excluded_count": 2,
+  "fallback_count": 2,
+  "fallback_by_reason": {
+    "missing_scaffold_input": 2
+  },
+  "manual_review_count": 0,
+  "scaffold_overlaps": [],
+  "protein_cluster_overlaps": [],
+  "zero_overlap": {
+    "scaffold": true,
+    "protein_cluster": true
+  }
+}

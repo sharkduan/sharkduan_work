@@ -1,0 +1,50 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "role": "split_index",
+  "split_policy": {
+    "algorithm": "leakage_aware_covalent_splits",
+    "algorithm_version": "1.0.0",
+    "random_seed": 42,
+    "split_ratios": {"train": 0.8, "val": 0.1, "test": 0.1}
+  },
+  "assignment_count": 4,
+  "assignments": [
+    {
+      "record_id": "MS000000000000000000000000000001",
+      "split": "train",
+      "scaffold_key": "CC=CC=O",
+      "protein_cluster_id": "PC_A",
+      "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+      "fallback_reason": null,
+      "manual_review_status": null
+    },
+    {
+      "record_id": "MS000000000000000000000000000002",
+      "split": "excluded",
+      "scaffold_key": null,
+      "protein_cluster_id": "PC_B",
+      "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+      "fallback_reason": "missing_scaffold_input",
+      "manual_review_status": null
+    },
+    {
+      "record_id": "MS000000000000000000000000000003",
+      "split": "excluded",
+      "scaffold_key": null,
+      "protein_cluster_id": "PC_C",
+      "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+      "fallback_reason": "missing_scaffold_input",
+      "manual_review_status": null
+    },
+    {
+      "record_id": "MS000000000000000000000000000004",
+      "split": "test",
+      "scaffold_key": "c1ccccc1",
+      "protein_cluster_id": "PC_D",
+      "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+      "fallback_reason": null,
+      "manual_review_status": null
+    }
+  ]
+}

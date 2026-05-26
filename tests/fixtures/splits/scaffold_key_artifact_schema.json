@@ -1,0 +1,58 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "role": "scaffold_key",
+  "description": "Schema for per-record scaffold-key artifact generated during de-warheaded scaffold extraction.",
+  "required_fields": [
+    "schema_version",
+    "contract_version",
+    "record_id",
+    "role",
+    "algorithm",
+    "algorithm_version",
+    "warhead_match",
+    "scaffold_key",
+    "fallback_reason"
+  ],
+  "algorithm": {
+    "description": "Name of the algorithm used for scaffold extraction.",
+    "type": "string",
+    "allowed": ["bemis_murcko_dewarheaded", "custom_graph_key", "fixture_key"]
+  },
+  "algorithm_version": {
+    "description": "Version of the algorithm.",
+    "type": "string",
+    "example": "1.0.0"
+  },
+  "warhead_match": {
+    "description": "Result of warhead matching on the ligand graph.",
+    "type": "object",
+    "required": ["matched", "warhead_type", "warhead_smarts", "removed_atom_indices"],
+    "matched": {
+      "type": "boolean",
+      "description": "Whether the warhead was successfully matched."
+    },
+    "warhead_type": {
+      "type": ["string", "null"],
+      "description": "The warhead type from core_labels or rule table."
+    },
+    "warhead_smarts": {
+      "type": ["string", "null"],
+      "description": "SMARTS pattern used for warhead matching."
+    },
+    "removed_atom_indices": {
+      "type": "array",
+      "items": "integer",
+      "description": "Atom indices removed from ligand graph before scaffold derivation."
+    }
+  },
+  "scaffold_key": {
+    "type": ["string", "null"],
+    "description": "De-warheaded scaffold key. Null when fallback_reason is set."
+  },
+  "fallback_reason": {
+    "type": ["string", "null"],
+    "description": "Reason scaffold key could not be derived.",
+    "allowed": [null, "warhead_unmatched", "missing_scaffold_input", "missing_protein_cluster_input", "manual_review_override"]
+  }
+}

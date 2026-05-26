@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "record_id": "SL000000000000000000000000000001",
+  "role": "scaffold_key",
+  "algorithm": "bemis_murcko_dewarheaded",
+  "algorithm_version": "1.0.0",
+  "warhead_match": {
+    "matched": true,
+    "warhead_type": "acrylamide",
+    "warhead_smarts": "[CX3](=[OX1])[NX3]",
+    "removed_atom_indices": [4, 5, 6]
+  },
+  "scaffold_key": "CC=CC=O",
+  "fallback_reason": null
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "role": "leakage_report",
+  "record_count": 4,
+  "train_count": 2,
+  "val_count": 1,
+  "test_count": 1,
+  "excluded_count": 0,
+  "fallback_count": 0,
+  "fallback_by_reason": {},
+  "manual_review_count": 0,
+  "scaffold_overlaps": [],
+  "protein_cluster_overlaps": [
+    {
+      "protein_cluster_id": "PC001",
+      "overlapping_splits": ["train", "val"],
+      "record_ids": [
+        "PC000000000000000000000000000001",
+        "PC000000000000000000000000000002"
+      ]
+    }
+  ],
+  "zero_overlap": {
+    "scaffold": true,
+    "protein_cluster": false
+  }
+}
