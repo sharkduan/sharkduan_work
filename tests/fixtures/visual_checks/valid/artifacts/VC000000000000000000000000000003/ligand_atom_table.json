@@ -1,0 +1,12 @@
+{
+  "atoms": [
+    {"serial": 1, "name": "C1", "element": "C", "x": 13.900, "y": 5.600, "z": 5.800},
+    {"serial": 2, "name": "C2", "element": "C", "x": 15.500, "y": 6.200, "z": 6.800},
+    {"serial": 3, "name": "C3", "element": "C", "x": 16.800, "y": 5.000, "z": 7.200},
+    {"serial": 4, "name": "O1", "element": "O", "x": 18.500, "y": 10.000, "z": 12.000},
+    {"serial": 5, "name": "N1", "element": "N", "x": 20.000, "y": -5.000, "z": 8.000}
+  ],
+  "ligand_id": "LIG",
+  "residue_number": 501,
+  "chain_id": "B"
+}
