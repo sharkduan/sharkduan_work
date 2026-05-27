@@ -855,18 +855,50 @@ The report is consumed by downstream governance checks and manual review; it doe
 
 ## Model Interfaces
 
+### Input Bundle
+
+Task 17 consumes a single `records.jsonl` — the finalized Task 13 output with five artifact roles per record (`protein_atom_table`, `ligand_atom_table`, `ligand_bond_table`, `coordinates`, `edge_candidates`). The input is a plain JSONL file, not a Data Release Gate bundle. The Data Release Gate (Checkpoint A) is a governance precondition checked before Task 17 is invoked; it is not embedded in the batch constructor as a runtime check.
+
 ### Python API
 
 ```python
+def make_model_batch(
+    records_path: object,
+    batch_spec: "BatchSpec | None" = None,
+) -> ContractEnvelope["ModelBatch"]: ...
+    """Convert accepted records into a typed ModelBatch.
+
+    Reads a finalized Task 13 ``records.jsonl`` (accepted records with
+    five artifact roles).  Validates every artifact for existence,
+    checksum, and readability.  Builds ``BatchRecordHeader`` per record
+    (with ``target_atom_identity`` resolved from ``protein_atom_table``
+    artifact), aggregates ``BatchTensors`` (shapes/dtypes only — no
+    tensor data), collects ``static_edge_candidates_refs`` (record_id →
+    Task 12 ``edge_candidates`` ``ArtifactRef``), aggregates per-record
+    ``EdgeDenominators``, and discovers ``bond_type_vocabulary`` from
+    ``core_labels.bond_type`` values.
+
+    Fails before tensor construction with structured ``ContractError`` on
+    any of the 6 ``MODEL_BATCH_*`` error codes:
+    - ``MODEL_BATCH_ARTIFACT_MISSING`` / ``_UNREADABLE`` / ``_CHECKSUM_MISMATCH``
+    - ``MODEL_BATCH_ARTIFACT_ROLE_MISSING``
+    - ``MODEL_BATCH_CONTRACT_VERSION_UNSUPPORTED``
+    - ``MODEL_BATCH_REQUIRED_STATE_UNAVAILABLE``
+
+    Task 17 does not read the rule table. Finalized records must already
+    include ``metadata.chemical_state.status``; missing chemical-state
+    metadata and explicit ``unavailable`` status both fail conservatively
+    with ``MODEL_BATCH_REQUIRED_STATE_UNAVAILABLE``.
+
+    Does NOT check Data Release Gate, split assignment, quality-tier
+    eligibility, or visual check status — those are governance / Task 22
+    concerns.  Creates no artifacts on disk (no side effects).
+    """
+
 def build_covalent_model(
     config: "ModelConfig",
     registry: "ContractRegistry",
 ) -> "CovalentDiffusionModel": ...
-
-def make_model_batch(
-    records: "RecordBundle",
-    batch_spec: "BatchSpec",
-) -> ContractEnvelope["ModelBatch"]: ...
 
 def forward_covalent(
     model: "CovalentDiffusionModel",
@@ -879,33 +911,224 @@ def decode_final_edge(
 ) -> "FinalDecodeResult": ...
 
 def inspect_batch(
-    records: "RecordBundle",
-    record_id: "RecordId",
-) -> "BatchInspectionReport": ...
+    records_path: Path,
+    record_id: str | None = None,
+) -> dict: ...
+    """Inspect one record (--record-id) or all records in a batch.
+
+    Returns a deterministic JSON dict with ``schema_version``,
+    ``contract_version``, ``batch_spec`` (aggregated), ``records`` (list of
+    per-record reports), ``passed``, ``errors``, and ``warnings``.
+
+    Each per-record report contains ``record_id``, ``line``, ``error``
+    (null when ok), ``error_code``, ``provenance`` (nested dict with
+    ``record_id``, ``residue_reaction_family``, ``quality_tier``,
+    ``visual_check_status``, ``chemical_state_status``,
+    ``target_atom_identity``, ``target_atom_index``,
+    ``target_atom_artifact_role``, ``artifact_refs``, ``batch_index``),
+    ``tensor_shapes`` (nested dict with all 9 shape fields plus dtype,
+    index_dtype, coordinate_frame), ``denominators_expected`` (nested
+    dict with all 10 denominator fields), ``batch_spec`` (per-record
+    nested dict), and ``warnings``.
+
+    If a record would fail batch construction, the report includes the
+    error reason rather than silently skipping it.
+    """
 ```
 
 ### Public Types
 
+All types below live in `covalent_design.contracts.types` (shared across packages) or in their respective package modules. See ADR 0035 for placement rationale.
+
 ```python
 @dataclass(frozen=True)
+class BatchRecordHeader:
+    """Provenance layer for one record in a ModelBatch."""
+    record_id: str
+    residue_reaction_family: str
+    quality_tier: str                # "Q0" | "Q1" | "Q2"
+    visual_check_status: str         # "pending" | "pass" | "fail" | "needs_rule_review"
+    chemical_state_status: str       # "explicit" | "inferred" | "unavailable"
+    target_atom_identity: ProteinAtomIdentity  # resolved from protein_atom_table artifact
+    target_atom_index: int            # from core_labels.target_atom_index
+    target_atom_artifact_role: str    # constant "protein_atom_table"
+    split_assignment: str | None     # populated by Task 22, not Task 17
+    fallback_reason: str | None
+    artifact_refs: Mapping[str, ArtifactRef]
+    batch_index: int
+
+@dataclass(frozen=True)
+class BatchTensors:
+    """Computational layer — shapes and dtype metadata."""
+    protein_coords_shape: tuple[int, ...]      # (B, N_prot, 3)
+    ligand_coords_shape: tuple[int, ...]       # (B, N_lig, 3)
+    protein_atom_types_shape: tuple[int, ...]  # (B, N_prot)
+    ligand_atom_types_shape: tuple[int, ...]   # (B, N_lig)
+    ligand_bonds_shape: tuple[int, ...]        # (B, N_lig, N_lig)
+    edge_candidates_shape: tuple[int, ...]     # (B, N_candidates)
+    positive_label_mask_shape: tuple[int, ...] # (B, N_candidates)
+    candidate_to_ligand_map_shape: tuple[int, ...]
+    candidate_to_protein_map_shape: tuple[int, ...]
+    dtype: str = "float32"
+    index_dtype: str = "int64"
+    coordinate_frame: str = "original_pdb"
+
+@dataclass(frozen=True)
 class ModelBatch:
-    records: tuple["RecordId", ...]
-    residue_reaction_family: "TensorRef"
-    target_atom_identity: tuple["ProteinAtomIdentity", ...]
-    ligand_num_atom: "TensorRef"
-    edge_candidates: "EdgeCandidateTensorRef"
-    denominators_expected: "EdgeDenominators"
+    """Typed batch — provenance + tensor metadata."""
+    records: tuple[BatchRecordHeader, ...]
+    tensors: BatchTensors
+    static_edge_candidates_refs: Mapping[str, ArtifactRef]
+    denominators_expected: EdgeDenominators
+    batch_spec: BatchSpec | None = None
+
+@dataclass(frozen=True)
+class BatchSpec:
+    """Configuration carried alongside every ModelBatch."""
+    bond_type_vocabulary: tuple[str, ...]  # discovered from records
+    max_protein_atoms: int
+    max_ligand_atoms: int
+    max_candidates: int
+    candidate_radius_angstrom: float = 4.0
+    coordinate_frame: str = "original_pdb"
+    records_jsonl_hash: str | None = None
+
+@dataclass(frozen=True)
+class BatchInspectionReport:
+    """Output schema for a single record from inspect_batch.
+
+    inspect_batch() returns a batch-level dict; this type describes
+    the fields present in each per-record entry of the ``records`` list.
+    """
+    schema_version: str
+    contract_version: str
+    record_id: str
+    batch_index: int
+    provenance: BatchRecordHeader | None
+    tensor_shapes: dict[str, tuple[int, ...]] | None
+    denominators_expected: EdgeDenominators | None
+    batch_spec: BatchSpec | None
+    warnings: tuple[str, ...]
 
 @dataclass(frozen=True)
 class ModelForwardOutput:
-    pmdm_outputs: Mapping[str, "TensorRef"]
-    edge_logits: "TensorRef"
-    bond_type_logits: "TensorRef"
-    edge_prob_message_weights: "TensorRef"
-    denominators_observed: "EdgeDenominators"
+    """Output of one model forward pass."""
+    pmdm_outputs: Mapping[str, object]
+    edge_logits: object             # Tensor: (B, N_candidates)
+    bond_type_logits: object        # Tensor: (B, N_candidates, N_bond_types)
+    family_logits: object           # Tensor: (B, N_families) — v1 required
+    edge_prob_message_weights: object  # detached Tensor: (B, N_candidates)
+    message_weight_source: str      # "detached_edge_probability"
+    denominators_observed: EdgeDenominators
+
+@dataclass(frozen=True)
+class StepwiseCandidate:
+    """One edge candidate at a single denoising timestep."""
+    local_index: int              # temporary, per-timestep
+    ligand_atom_index: int        # stable across timesteps
+    target_atom: ProteinAtomIdentity
+    is_positive_label: bool
+    is_forced_positive: bool      # forced-in when noise moved it outside radius
+    within_radius: bool
+    distance: float               # angstroms
+
+@dataclass(frozen=True)
+class StepwiseCandidateSet:
+    """All edge candidates rebuilt at one denoising timestep."""
+    timestep_index: int
+    timestep_value: float
+    candidates: tuple[StepwiseCandidate, ...]
+    positive_label_ligand_atom_index: int  # from Task 12 static edge_candidates
+    positive_label_target_atom: ProteinAtomIdentity
+    positive_label_bond_type: str
+    denominators: EdgeDenominators
+    empty_radius_window: bool
 ```
 
-`TensorRef` may be backed by an in-memory tensor inside a run, but public module boundaries should preserve denominator metadata and provenance. Training should not bypass `ModelForwardOutput` and compute losses directly from bare logits.
+### Tensor Shape Conventions
+
+| Data | Shape | Dtype |
+| --- | --- | --- |
+| Protein coords | `(B, N_prot, 3)` | float32 |
+| Ligand coords | `(B, N_lig, 3)` | float32 |
+| Protein atom types | `(B, N_prot)` | int64 |
+| Ligand atom types | `(B, N_lig)` | int64 |
+| Ligand bonds | `(B, N_lig, N_lig)` | int64 |
+| Edge logits | `(B, N_candidates)` | float32 |
+| Bond type logits | `(B, N_candidates, N_bond_types)` | float32 |
+| Family logits | `(B, N_families)` | float32 |
+| Positive label mask | `(B, N_candidates)` | bool |
+
+Coordinates are in angstroms in the `original_pdb` frame by default.
+`N_prot`, `N_lig`, and `N_candidates` are per-batch maxima; shorter entries are padded.
+
+### Bond-Type Vocabulary
+
+Discovered dynamically by ``make_model_batch()`` from all ``core_labels.bond_type`` values in the input records, excluding ``"no_edge"``.  The vocabulary always has ``"no_edge"`` at index 0 followed by alphabetically sorted discovered bond types.  Stored in ``BatchSpec.bond_type_vocabulary`` as a tuple of strings.  Expected v1 vocabulary: ``("no_edge", "carbon-nitrogen", "carbon-oxygen", "carbon-sulfur", "disulfide", "phosphorus-oxygen")``.
+
+### Static vs Dynamic Edge Candidates
+
+- **Static edge candidates** (Task 12, artifact role `"edge_candidates"`): built once from ground-truth coordinates. Provide positive-edge labels, negative-edge labels, and denominator statistics for supervision. Task 17 validates their existence and checksum and records them in ``ModelBatch.static_edge_candidates_refs`` (a ``record_id → ArtifactRef`` mapping). Task 18 later consumes their per-edge contents (positive label identity, bond type, per-candidate metadata).
+- **Stepwise candidates** (Task 18, type `StepwiseCandidateSet`): rebuilt at every denoising timestep from current noisy/generated ligand coordinates. Positive label is force-included when noise moves it outside the candidate radius.
+
+These are distinct entities and MUST NOT share an unqualified type or variable name.
+
+### PMDM Adapter Output Keys
+
+`ModelForwardOutput.pmdm_outputs` MUST contain 7 required keys and 2 optional keys:
+
+| Key | Shape | Required |
+| --- | --- | --- |
+| `ligand_atom_features` | `(B, N_lig, D_lig)` | yes |
+| `protein_atom_features` | `(B, N_prot, D_prot)` | yes |
+| `ligand_coords_denoised` | `(B, N_lig, 3)` | yes |
+| `ligand_pair_features` | `(B, N_lig, N_lig, D_pair)` | no |
+| `protein_ligand_pair_features` | `(B, N_prot, N_lig, D_cross)` | no |
+| `position_loss` | scalar | yes |
+| `atom_type_loss` | scalar | yes |
+| `timestep` | scalar float | yes |
+| `num_atom` | `(B,)` | yes |
+
+Fake backbone for smoke testing must output all `required` keys with correct shapes
+and deterministic random values (fixed seed).
+
+### Failure Reason Priority (Task 21)
+
+Gate checks execute in this order for each candidate:
+
+```
+1. target_atom → 2. ligand_atom_class → 3. bond_type →
+4. single_edge_representability → 5. warhead_smarts → 6. forbidden_smarts →
+7. valence → 8. protonation → 9. geometry
+```
+
+The first failing check is that candidate's primary failure. `REQUIRED_GATE_STATE_UNAVAILABLE` outranks all other failures (the gate cannot be evaluated).
+
+If the top-scoring candidate fails and a lower-ranked candidate passes all checks, the sample is **valid** — `secondary_failure_reasons` preserves skipped-candidate failures for diagnostic review.
+
+### Message-Weight Anti-Leakage Guard (Task 20)
+
+`ModelForwardOutput.edge_prob_message_weights` MUST be a detached tensor (`requires_grad == False`) and `ModelForwardOutput.message_weight_source` MUST be `"detached_edge_probability"`. The source value is part of the public contract: label, ground-truth, target-edge, empty, or unknown sources are invalid even when `requires_grad == False`. The `ModelForwardOutput.__post_init__` validates this at construction time without importing PyTorch:
+
+```python
+def __post_init__(self):
+    if getattr(self.edge_prob_message_weights, "requires_grad", False):
+        raise ValueError("message_weights must be detached predicted probabilities")
+    if self.message_weight_source != "detached_edge_probability":
+        raise ValueError("message weights must come from the detached prediction path")
+```
+
+Ground-truth labels MUST NOT be assigned to `edge_prob_message_weights`. The runtime check rejects direct use of trainable logits or any tensor-like object with `requires_grad=True`; it also rejects explicit label/ground-truth provenance through `message_weight_source`. Task 20 tests must therefore include both guards: detached prediction source accepted, `requires_grad=True` rejected, and label/ground-truth/target-edge source rejected even when detached.
+
+### MISSING GUARDS
+
+- `make_model_batch()` fails before tensor construction on any of the 6 `MODEL_BATCH_*` errors.
+- `make_model_batch()` does NOT check Data Release Gate, split assignment, quality-tier eligibility, or visual check status — those are governance / Task 22 concerns.
+- `make_model_batch()` does NOT exclude Q2/visual-blocked/fallback records — that is Task 22 responsibility.
+- `make_model_batch()` creates no artifacts on disk (no side effects); only builds and returns an in-memory ``ContractEnvelope[ModelBatch]``.
+- Static edge candidate refs are validated for existence and checksum; their contents (positive edge identity, bond type, per-candidate metadata) are consumed later by Task 18 (stepwise candidate builder) and Task 23 (loss masks), not by the batch constructor itself.
+- `decode_final_edge()` returns `FinalDecodeResult` with either a selected valid edge or full failure metadata; it never returns a best-failed-edge as valid.
+- ``inspect_batch()`` returns a deterministic JSON dict: same ``records_path`` always produces byte-identical JSON output.
 
 ### CLI
 
@@ -919,7 +1142,7 @@ python -m covalent_design.model.export_arch_summary --config configs/covalent_mo
 
 - Use `candidate_radius_angstrom`, not `radius` or `pocket_radius`, for covalent edge candidates.
 - Forced positives are represented explicitly and excluded from v1 message passing and geometry regression.
-- Message weights are detached predicted probabilities, never ground-truth labels.
+- Message weights are detached predicted probabilities with `message_weight_source = "detached_edge_probability"`, never ground-truth labels.
 - `decode_final_edge()` returns valid or invalid; it never returns a best failed edge as a valid result.
 
 ## Training Interfaces
@@ -928,10 +1151,21 @@ python -m covalent_design.model.export_arch_summary --config configs/covalent_mo
 
 ```python
 def prepare_dataset(
-    records: "RecordBundle",
-    split: "SplitName",
-    policy: "TrainingDataPolicy",
+    records_path: Path,
+    split_index_path: Path,
+    split_name: str,                     # "train" | "val" | "test"
+    policy: "TrainingDataPolicy | None",
 ) -> ContractEnvelope["TrainingDatasetIndex"]: ...
+    """Build the training dataset index for one split.
+
+    Excludes records according to policy:
+    1. split != split_name → not in this dataset
+    2. split == "excluded" → hard exclude
+    3. visual_check_status != "pass" && policy.exclude_visual_blocked → exclude
+    4. quality_tier not in accepted set → exclude
+    5. policy.first_core_only && multi-linkage → exclude
+    6. policy.exclude_q2 && quality_tier == "Q2" → exclude
+    """
 
 def load_training_batch(
     dataset: "TrainingDatasetIndex",
@@ -948,7 +1182,7 @@ def train(config: "TrainConfig") -> ContractEnvelope["TrainingRunManifest"]: ...
 
 def validate_epoch(
     checkpoint: "CheckpointRef",
-    split: "SplitName",
+    split: str,
 ) -> ContractEnvelope["ValidationReport"]: ...
 
 def report_denominators(
@@ -960,27 +1194,161 @@ def report_denominators(
 
 ```python
 @dataclass(frozen=True)
+class TrainingRecordEntry:
+    record_id: str
+    residue_reaction_family: str
+    quality_tier: str
+    visual_check_status: str
+    fallback_reason: str | None
+    manual_review_status: str | None
+    artifact_refs: Mapping[str, ArtifactRef]
+
+@dataclass(frozen=True)
+class ExclusionSummary:
+    total_accepted: int
+    records_in_split: int
+    excluded_by_policy: int
+    exclusion_reasons: Mapping[str, int]  # reason → count
+
+@dataclass(frozen=True)
+class TrainingDatasetIndex:
+    policy: Mapping[str, object]
+    split_name: str
+    records: tuple[TrainingRecordEntry, ...]
+    excluded_summary: ExclusionSummary
+
+@dataclass(frozen=True)
+class MaskAudit:
+    """Per-timestep mask decomposition."""
+    candidate_count: int
+    natural_positive_count: int
+    forced_positive_count: int
+    natural_negative_count: int
+    zero_negative_count: int
+    masked_by_pending_smarts: int
+    masked_by_pending_geometry: int
+    masked_by_missing_chemical_state: int
+    masked_by_q2_exclusion: int
+    masked_by_forced_positive_exclusion: int
+    edge_loss_eligible_count: int
+    bond_type_loss_eligible_count: int
+    geometry_loss_eligible_count: int
+    message_passing_candidate_count: int
+    gate_evaluated_count: int
+
+@dataclass(frozen=True)
+class DenominatorsStratum:
+    residue_reaction_family: str
+    timestep_bucket: str  # "early" | "mid" | "late"
+    denominators: EdgeDenominators
+    mask_audit: MaskAudit
+
+@dataclass(frozen=True)
 class LossReport:
-    total_loss: "TensorRef"
-    components: Mapping[str, "TensorRef"]
-    masks: Mapping[str, "MaskAudit"]
-    denominators: "EdgeDenominators"
-    strata: tuple["DenominatorStratum", ...]
+    schema_version: str
+    contract_version: str
+    step: int
+    total_loss: float
+    components: Mapping[str, float]
+    denominators: EdgeDenominators | None
+    mask_audit: MaskAudit | None
+    strata: tuple[DenominatorsStratum, ...]
 ```
 
-Required components:
+Required `components` keys (v1, all required):
 
 - `pmdm_position_loss`
 - `pmdm_atom_loss`
 - `covalent_edge_loss`
 - `covalent_bond_type_loss`
 - `covalent_geometry_loss`
-- optional `family_aux_loss`
+- `family_aux_loss`
+
+### Forced-Positive Loss Participation
+
+| Loss | Forced positive included? |
+| --- | --- |
+| edge_existence_loss | yes — model must recognise positive edge even outside radius |
+| bond_type_loss | no — insufficient context for bond-type classification |
+| geometry_loss | no — geometry is undefined outside radius |
+| message_passing | no — only radius-in candidates participate |
+| gate_evaluated | yes — gate evaluates all candidates including forced |
+
+### Pending SMARTS + Pending Geometry Interaction
+
+When both are pending for a candidate:
+- `edge_existence_loss` — NOT masked (neither SMARTS nor geometry affect it)
+- `bond_type_loss` — masked by `pending_smarts`
+- `geometry_loss` — masked by `pending_geometry`
+- Gate `warhead_smarts` / `forbidden_smarts` — not_evaluable
+- Gate `geometry` — not_evaluable
+
+### Timestep Buckets
+
+- `early`: t ∈ [0.8, 1.0] (high noise)
+- `mid`: t ∈ [0.3, 0.8)
+- `late`: t ∈ [0.0, 0.3) (low noise)
+
+### TrainingRunManifest
+
+```python
+@dataclass(frozen=True)
+class TrainingRunManifest:
+    schema_version: str
+    contract_version: str
+    role: str = "training_run_manifest"
+    run_id: str
+    training_config_resolved_hash: str          # canonical JSON → SHA-256
+    input_hashes: Mapping[str, str]
+        # required keys: records_jsonl, split_index, rule_table
+        # release-gate provenance keys: quality_report, visual_check_index, release_gate
+    checkpoint_dir: str
+    train_metrics_uri: str
+    validation_metrics_uri: str
+    denominator_report_uri: str
+    train_completed: bool
+    epochs_completed: int
+    steps_completed: int
+    crash_recovery: Mapping[str, object] | None
+```
+
+### Hash Computation
+
+- **Config hash**: resolve config → canonical JSON (sorted keys) → SHA-256
+- **Record bundle hash**: SHA-256 of `records.jsonl`
+- **Split hash**: SHA-256 of `split_index.json`
+- **Rule table hash**: canonical JSON of parsed rule table → SHA-256
+- **Release-gate provenance hashes**: SHA-256 of the Task 16 quality report, Task 15 visual check index, and optional release approval manifest. These hashes are audit provenance only; training runtime does not re-run the Data Release Gate.
+
+### Checkpoint Manifest
+
+```yaml
+schema_version: "1"
+contract_version: "1.0.0"
+role: "checkpoint_manifest"
+run_id: "..."
+step: 5000
+model_contract_version: "1.0.0"
+rule_table_version: "1.0.0"
+input_hashes:
+  records_jsonl: "sha256:..."
+  split_index: "sha256:..."
+  rule_table: "sha256:..."
+  training_config_resolved: "sha256:..."
+  quality_report: "sha256:..."
+  visual_check_index: "sha256:..."
+  release_gate: "sha256:..."
+model_weights_uri: "step_5000_model.pt"
+optimizer_state_uri: "step_5000_optimizer.pt"
+bond_type_vocabulary: ["no_edge", "carbon-sulfur", ...]
+```
+
+Cross-version compatibility: major version mismatch → hard reject; minor version mismatch → warn but allow.
 
 ### CLI
 
 ```bash
-python -m covalent_design.training.prepare_dataset --records data/processed/covalent_complex_records/records.jsonl --split scaffold
+python -m covalent_design.training.prepare_dataset --records data/processed/covalent_complex_records/records.jsonl --splits <split_index.json> --split train
 python -m covalent_design.training.train --config configs/covalent_train_smoke.yml
 python -m covalent_design.training.validate_epoch --checkpoint outputs/checkpoints/latest.pt --split val
 python -m covalent_design.training.report_denominators --run outputs/runs/<run_id>
@@ -992,13 +1360,14 @@ python -m covalent_design.training.report_denominators --run outputs/runs/<run_i
 outputs/runs/<run_id>/
   run_manifest.yml
   config.resolved.yml
-  train_metrics.jsonl
+  train_metrics.jsonl          # one LossReport.to_dict() per line
   validation_metrics.jsonl
   denominator_report.yml
   checkpoints/
+    step_5000_checkpoint.yml
+    step_5000_model.pt
+    step_5000_optimizer.pt
 ```
-
-Checkpoint manifests include contract version, rule table version/hash, record bundle hash, split hash, and model config hash.
 
 ### Misuse Guards
 
@@ -1006,8 +1375,16 @@ Checkpoint manifests include contract version, rule table version/hash, record b
 - Q2 keep-with-flag records are eligible only through accepted-core gates and must be stratified in reports.
 - Pending geometry produces zero geometry denominator, not an unbounded geometry loss.
 - Training reports distinguish debug random split from primary protein-cluster and scaffold splits.
+- `LossReport` serialises via `.to_dict()` for JSONL output; `components` keys are validated at construction.
 
 ## Inference Interfaces
+
+### Request File Format
+
+YAML (`.yml` / `.yaml`) is the authoritative human-authored format.
+JSON is accepted for programmatically-generated requests.  The CLI auto-detects
+format from the file extension.  Validated requests are normalised to YAML
+(`request.normalized.yml`) at the start of `generate()`.
 
 ### Python API
 
@@ -1033,10 +1410,6 @@ def export_complexes(
     results: "GenerationResultIndex",
     output_format: Literal["mmcif", "pdb_compat"] = "mmcif",
 ) -> "ExportReport": ...
-
-def summarize(
-    results: "GenerationResultIndex",
-) -> "GenerationRunSummary": ...
 ```
 
 ### Request Type
@@ -1052,6 +1425,8 @@ class ReactiveSiteGenerationRequest:
     sample_count: int
     size_control: "LigandSizeControl | None"
     protein_chemical_state_request: "ProteinChemicalStateRequest | None"
+    # Optional altloc specification:
+    target_altloc: str | None = None  # "A", "B", etc.
 ```
 
 `LigandSizeControl` must represent exactly one of:
@@ -1060,24 +1435,91 @@ class ReactiveSiteGenerationRequest:
 - inclusive range `min_ligand_heavy_atoms` and `max_ligand_heavy_atoms`
 - absent, meaning model size prior
 
+### Alternate-Location Atom Policy
+
+When the target atom has multiple altloc conformations:
+1. If `target_altloc` is specified in the request → use that altloc; fail with
+   `REQUEST_TARGET_ATOM_NOT_FOUND` if not present.
+2. If not specified → select highest occupancy altloc; if occupancy data
+   unavailable or equal, select `altloc='A'`.
+3. Resolved altloc recorded in `ValidatedRequest.resolved_target_altloc`.
+
 ### Result Type
+
+The full `CovalentGenerationResult` is defined in `covalent_design.contracts.types`.
+Key fields include the four lifecycle statuses, `primary_failure_reason`,
+`secondary_failure_reasons`, `generated_ligand_status`, `predicted_ligand_attachment_atom`,
+`predicted_covalent_edge`, `covalent_edge_score`, `geometry_metrics`,
+`molecular_quality_metrics`, `matched_warhead_type`, `predicted_warhead_type`,
+`covalent_docking_score`, `noncovalent_vina_score`, `edge_validity_checks`, and `artifacts`.
+
+### SamplingSystemFailure
 
 ```python
 @dataclass(frozen=True)
-class CovalentGenerationResult:
+class SamplingSystemFailure:
     request_id: str
     sample_id: int
-    residue_reaction_family: "ResidueReactionFamily"
-    target_atom_identity: "ProteinAtomIdentity"
-    generation_validity_status: Literal["valid", "invalid"]
-    complex_export_status: Literal["not_applicable", "exported", "failed"]
-    docking_eligibility_status: Literal["not_applicable", "eligible", "not_evaluable"]
-    docking_run_status: Literal["not_applicable", "not_run", "succeeded", "failed"]
-    primary_failure_reason: "FailureReason | None"
-    secondary_failure_reasons: tuple["FailureReason", ...]
-    edge_validity_checks: tuple["EdgeValidityCheck", ...]
-    artifacts: Mapping[str, ArtifactRef]
+    failure_category: str    # crash | oom | timeout | retry_exhausted |
+                             # checkpoint_load_failed | sampler_invariant_violation
+    failure_timestamp: str   # ISO 8601
+    traceback_hash: str      # SHA-256 of normalised traceback
+    log_uri: str
+    retry_count: int
+    resource_snapshot: Mapping[str, object] | None
+    message: str
 ```
+
+### GenerationRunManifest
+
+```python
+@dataclass(frozen=True)
+class GenerationRunManifest:
+    schema_version: str
+    contract_version: str
+    role: str = "generation_run_manifest"
+    job_id: str
+    request_id: str
+    checkpoint_ref: ArtifactRef | None
+    accepted_request_sample_count: int
+    attempted_sample_count: int
+    sampling_system_failure_count: int  # deduplicated by sample_id
+    result_count: int
+    artifacts: Mapping[str, ArtifactRef]
+        # keys: request, results, sampling_system_failures
+```
+
+### Retry Policy
+
+- `attempted_sample_count` is per sample_id, not per attempt.
+- Retries are internal strategy details and do NOT change denominator equations.
+- `accepted_request_sample_count = attempted_sample_count + sampling_system_failure_count`
+- `sampling_system_failure_count` is deduplicated by sample_id (only samples
+  that failed ALL retries).
+
+### mmCIF Export (Task 29)
+
+Writer boundary: project-owned mmCIF writer or adapter boundary. RDKit may be used later as an optional backend only after the exact API is source-verified; default CI must use fixture/project-owned writer tests and must not require RDKit. Source-verification status (2026-05-27): the official RDKit `rdkit.Chem.rdmolfiles` API reference (`https://rdkit.org/docs/source/rdkit.Chem.rdmolfiles.html`) was checked for an mmCIF writer and no v1 backend API is frozen from that source.
+
+```python
+def write_covalent_complex(
+    result: CovalentGenerationResult,
+    protein_atom_table: ArtifactRef,
+    ligand_coords: object,         # Tensor (N_lig, 3)
+    ligand_atom_types: object,     # Tensor (N_lig,)
+    ligand_bonds: object,          # Tensor (N_lig, N_lig)
+    covalent_edge: CovalentEdge,
+    out_path: Path,
+) -> ArtifactRef:
+    """Export a valid covalent complex as mmCIF.
+
+    Returns ArtifactRef with sha256 of the written file.
+    Raises ContractError(code="COMPLEX_EXPORT_FAILED") on failure.
+    """
+```
+
+Required mmCIF content: `_atom_site.*` for protein + ligand atoms,
+`_struct_conn` with `covale` type, `_entry.id`.
 
 ### CLI
 
@@ -1085,7 +1527,6 @@ class CovalentGenerationResult:
 python -m covalent_design.inference.validate_request --request request.yml
 python -m covalent_design.inference.generate --request request.yml --checkpoint outputs/checkpoints/model.pt --out outputs/generation/<job_id>
 python -m covalent_design.inference.export_complexes --results outputs/generation/<job_id>/results.jsonl
-python -m covalent_design.inference.summarize --results outputs/generation/<job_id>/results.jsonl
 ```
 
 ### Artifact Boundary
@@ -1102,12 +1543,11 @@ outputs/generation/<job_id>/
   logs/
 ```
 
-`generate()` returns a `GenerationRunManifest`, not `list[CovalentGenerationResult]`. Results and sampling system failures are sibling artifacts so evaluation can enforce:
+### Result Writer (Task 28)
 
-```text
-accepted_request_sample_count =
-  attempted_sample_count + sampling_system_failure_count
-```
+Pure Python API — no independent CLI.  `result_writer.write(result)` is called
+inside `generate()` for each attempted sample.  The writer validates lifecycle
+constraints before writing.
 
 ### Misuse Guards
 
@@ -1115,8 +1555,22 @@ accepted_request_sample_count =
 - Sampling crash, OOM, timeout, or retry exhaustion creates `SamplingSystemFailure`, not an invalid generated sample.
 - `predicted_warhead_type` is diagnostic only; validity gates use matched structural evidence and rule checks.
 - Ligand size is decided before denoising; size mismatch is not a successful sample filter.
+- `result_writer` validates lifecycle constraints (e.g., invalid → export = not_applicable) at write time.
 
 ## Evaluation Interfaces
+
+### Manifest-First CLI
+
+Evaluation uses a single entry point — the generation run manifest:
+
+```bash
+python -m covalent_design.evaluation.summarize_results \
+    --manifest outputs/generation/<job_id>/run_manifest.yml
+```
+
+`summarize_results()` reads `results.jsonl` and `sampling_system_failures.jsonl`
+paths from the manifest, validates their checksums, and computes the
+`EvaluationSummary`.  It MUST NOT infer counts from files on disk.
 
 ### Python API
 
@@ -1126,8 +1580,9 @@ def load_generation_run(
 ) -> ContractEnvelope["GenerationRunManifest"]: ...
 
 def summarize_results(
-    run: "GenerationRunManifest",
+    manifest: Path,
 ) -> "EvaluationSummary": ...
+    """Manifest-first: reads manifest, loads referenced artifacts, computes summary."""
 
 def check_denominators(
     summary: "EvaluationSummary",
@@ -1149,7 +1604,7 @@ def docking_score_eligible_results(
 
 def report(
     summary: "EvaluationSummary",
-    split: "SplitName",
+    split: str,
     out: Path,
 ) -> "ReportArtifact": ...
 ```
@@ -1186,13 +1641,34 @@ exported_valid_complex = docking_evaluable_valid + valid_but_not_docking_evaluab
 docking_evaluable_valid = successfully_docked + docking_failed + docking_not_run
 ```
 
+### Task 30 vs Task 33 Scope Split
+
+| Task | Scope | Output |
+| --- | --- | --- |
+| Task 30 | Global denominator equations (no strata) | `evaluation_summary.json` |
+| Task 33 | Per-split, per-family stratified reports | `stratified_evaluation_summary.json` |
+
+Task 30 alone does NOT need to produce split-aware or family-stratified reports.
+Checkpoint C requires Task 33 for full stratification.
+
 ### CLI
 
 ```bash
-python -m covalent_design.evaluation.summarize_results --results outputs/generation/<job_id>/results.jsonl --out outputs/eval/summary.yml
-python -m covalent_design.evaluation.check_denominators --summary outputs/eval/summary.yml
-python -m covalent_design.evaluation.run_covalent_docking --manifest configs/docking_protocol.yml --results outputs/generation/<job_id>/results.jsonl
-python -m covalent_design.evaluation.report --summary outputs/eval/summary.yml --split scaffold --out outputs/eval/report.md
+# Task 30 — global denominator check
+python -m covalent_design.evaluation.summarize_results \
+    --manifest outputs/generation/<job_id>/run_manifest.yml
+python -m covalent_design.evaluation.check_denominators \
+    --manifest outputs/generation/<job_id>/run_manifest.yml
+
+# Task 32 — docking protocol
+python -m covalent_design.evaluation.run_covalent_docking \
+    --manifest configs/docking_protocol.yml \
+    --results outputs/generation/<job_id>/results.jsonl
+
+# Task 33 — stratified report
+python -m covalent_design.evaluation.report \
+    --manifest outputs/generation/<job_id>/run_manifest.yml \
+    --split scaffold --out outputs/eval/report.md
 ```
 
 ### Misuse Guards

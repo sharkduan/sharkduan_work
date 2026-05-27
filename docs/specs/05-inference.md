@@ -133,8 +133,15 @@ Never:
 
 ## Open Questions
 
-- Should request files be YAML, JSON, or both?
-- What default pocket radius and sampling step count should be used when omitted?
-- How should alternate-location atoms be selected or rejected?
-- Should sampling failures be retried, and if so how are retries counted?
-- Which mmCIF writer library or internal writer should be used?
+Resolved (2026-05-26 contract freeze):
+
+- **Request file format:** YAML (`.yml`/`.yaml`) authoritative; JSON (`.json`) accepted. CLI auto-detects by extension.
+- **Default pocket radius:** 4.0 angstroms (same as candidate_radius). Sampling steps: TBD.
+- **Altloc policy:** Highest occupancy or `A`; `target_altloc` override field. See `interface-design.md`.
+- **Retry policy:** sample_id granularity; retries do not change denominator equations. `max_retries` and `retry_delay` are configurable in sampling_policy.
+- **mmCIF writer:** project-owned writer/adapter boundary. RDKit is a future optional backend only after the exact API is source-verified; default CI uses fixture/project-owned writer tests. Source-verification status (2026-05-27): the official RDKit `rdkit.Chem.rdmolfiles` API reference (`https://rdkit.org/docs/source/rdkit.Chem.rdmolfiles.html`) was checked for an mmCIF writer and no v1 backend API is frozen from that source.
+
+Still open for v1:
+
+- What default sampling step count should be used when omitted?
+- Exact sampling_policy defaults (max_retries, retry_delay, retry_on categories).

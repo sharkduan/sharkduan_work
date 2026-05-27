@@ -52,6 +52,7 @@ Separate learnable behavior from non-learnable constraints. Model code may expos
 edge_logits = edge_head(candidate_features)
 edge_prob = edge_logits.sigmoid()
 message_weight = edge_prob.detach()
+message_weight_source = "detached_edge_probability"
 context = apply_soft_cross_edge_messages(context, candidates, message_weight)
 ```
 
@@ -60,7 +61,7 @@ Rules:
 - Stepwise candidates are rebuilt from fixed protein coordinates and current noisy or generated ligand coordinates.
 - The positive training edge is force-included when diffusion noise moves it outside the candidate radius.
 - Force-included positives are counted separately and excluded from v1 soft edge message passing and geometry regression.
-- Ground-truth edge labels are not used as training-time message weights.
+- Ground-truth edge labels are not used as training-time message weights, and any `ModelForwardOutput` using label/ground_truth/target_edge as `message_weight_source` is invalid.
 - Final hard decoding can reject all candidates and return an invalid sample path.
 
 ## Testing Strategy
@@ -111,8 +112,16 @@ Never:
 
 ## Open Questions
 
-- Should the PMDM integration be a pure adapter, a shallow subclass, or a small fork with explicit patch boundaries?
-- What exact bond-type vocabulary should be exposed by the covalent bond head?
-- Is the optional family auxiliary head included in v1 or reserved for diagnostics after the first training run?
+Resolved (2026-05-26 contract freeze, see ADR 0035):
+
+- **Bond-type vocabulary:** Dynamically discovered from `core_labels.bond_type` across records + `"no_edge"` at index 0. Stored in `BatchSpec.bond_type_vocabulary`. ~6 positive classes + no_edge for v1.
+- **Family auxiliary head:** Included in v1. `family_logits` is a required `ModelForwardOutput` field; `family_aux_loss` is a required `LossReport` component.
+- **PMDM integration:** Adapter pattern with explicit output key vocabulary (9 keys: 7 required + 2 optional). Fake backbone for smoke tests. See `interface-design.md` PMDM Adapter Output Keys.
+- **Task 17 input bundle:** Consumes a single finalized Task 13 `records.jsonl` (five artifact roles per record). Task 17 does NOT check Data Release Gate, split assignment, quality-tier eligibility, or visual check status. ``make_model_batch()`` creates no artifacts on disk (no side effects).
+- **Target atom sourcing:** ``BatchRecordHeader.target_atom_identity`` is resolved from ``protein_atom_table`` artifact (chain_id, residue_number, residue_name); ``target_atom_index`` comes from ``core_labels.target_atom_index``; ``target_atom_artifact_role`` is constant ``"protein_atom_table"``.
+- **Static edge candidates:** Task 17 validates existence and checksum and records them in ``static_edge_candidates_refs`` (``record_id → ArtifactRef`` mapping). Per-edge contents (positive label identity, bond type) are consumed later by Task 18, not by ``make_model_batch()`` itself.
+
+Still open for v1:
+
 - How should final edge-score thresholds be calibrated?
 - Does size prior remain PMDM-style, or become family-conditioned in v1?

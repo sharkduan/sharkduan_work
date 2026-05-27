@@ -123,8 +123,19 @@ Never:
 
 ## Open Questions
 
+Resolved (2026-05-26 contract freeze, see ADR 0035, ADR 0036):
+
+- **Loss components:** All 6 components required in v1 (pmdm_position_loss, pmdm_atom_loss, covalent_edge_loss, covalent_bond_type_loss, covalent_geometry_loss, family_aux_loss). family_aux_loss is NOT optional.
+- **Forced-positive participation:** edge_existence_loss yes; bond_type_loss no; geometry_loss no; message_passing no; gate yes. See `interface-design.md` Forced-Positive Loss Participation table.
+- **Pending SMARTS + geometry interaction:** edge_existence_loss unaffected; bond_type masked by SMARTS; geometry masked by geometry. See `interface-design.md` Pending Interaction.
+- **Timestep buckets:** `early` [0.8, 1.0], `mid` [0.3, 0.8), `late` [0.0, 0.3).
+- **Smoke training config:** `covalent_train_smoke.yml` with `fake_backbone: true`, `steps: 1`, `batch_size: 4`. See `implementation-plan.md` Task 24.
+- **Hash computation:** Config → canonical JSON → SHA-256; Record bundle → SHA-256 of records.jsonl; Split → SHA-256 of split_index.json. See ADR 0035.
+- **Message-weight leakage:** Runtime `requires_grad` check in `ModelForwardOutput.__post_init__`, plus Task 20 provenance tests proving message weights come from detached model predictions rather than labels. See ADR 0036.
+
+Still open for v1:
+
 - What are the initial loss weights for edge, bond type, and geometry?
 - How should edge class imbalance be handled?
-- What timestep bucket definitions are used in reports?
 - What minimum fixture size is enough for a smoke epoch?
 - Which experiment tracking format should be used before full workflow tooling exists?

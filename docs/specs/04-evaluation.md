@@ -112,6 +112,15 @@ Never:
 
 ## Open Questions
 
+Resolved (2026-05-26 contract freeze):
+
+- **Evaluation CLI:** manifest-first (`--manifest <run_manifest.yml>`). Counts from manifest, not from disk. See `interface-design.md`.
+- **Task 30 vs Task 33 scope:** Task 30 = global denominator (no strata). Task 33 = per-split, per-family stratified reports. See `implementation-plan.md`.
+- **Failure reason priority:** Gate execution order determines primary failure. `REQUIRED_GATE_STATE_UNAVAILABLE` outranks all. See `interface-design.md` Failure Reason Priority.
+- **Retry counting:** sample_id granularity; retries internal; denominator not affected. See ADR 0035.
+
+Still open for v1:
+
 - Which covalent docking engine and representation are authoritative for v1?
 - Is docking required for all valid samples or a reviewed subset?
 - What score unit and pose ranking convention should be standardized?

@@ -566,7 +566,7 @@ python -m covalent_design.data.cli.write_quality_report --processed-root tests/f
 
 ### Task 17: Implement Model Batch Contracts
 
-**Goal:** Convert accepted record bundles into typed model batches without leaking raw artifact details.
+**Goal:** Convert finalized `records.jsonl` into typed `ModelBatch` instances. Fail before tensor construction on missing artifacts, checksum mismatches, or unsupported contract versions.
 
 **Files/modules:**
 
@@ -576,21 +576,37 @@ python -m covalent_design.data.cli.write_quality_report --processed-root tests/f
 
 **Dependencies:** Tasks 1, 13.
 
+**Contracts:** `ModelBatch`, `BatchRecordHeader`, `BatchTensors`, `BatchSpec`, `BatchInspectionReport` — defined in `covalent_design.contracts.types`. `MODEL_BATCH_ERROR_CODES` — 6 codes. `inspect_batch` JSON output schema defined in `interface-design.md`. See ADR 0035.
+
 **Acceptance criteria:**
 
-- `ModelBatch` carries record ids, family keys, target atom identities, ligand heavy-atom count, edge candidates, and expected denominators.
-- Missing artifact references fail before tensor construction.
-- `inspect_batch` CLI reports batch shape and contract metadata.
+- `make_model_batch(records_path, batch_spec=None)` accepts finalized `records.jsonl` (Task 13 output) and `BatchSpec | None`.
+- Input is a single `records.jsonl` file — NOT a Data Release Gate bundle.
+- Constructs `ModelBatch` with provenance layer (`BatchRecordHeader` per record) and computational layer (`BatchTensors` with shapes/dtypes/coordinate_frame). Carries `BatchSpec` in `ModelBatch.batch_spec`.
+- `BatchRecordHeader` explicitly carries `target_atom_identity` (resolved from `protein_atom_table` artifact: chain_id, residue_number, residue_name), `target_atom_index` (from `core_labels.target_atom_index`), and `target_atom_artifact_role` (constant `"protein_atom_table"`).
+- Carries `static_edge_candidates_refs` (`record_id` → Task 12 `edge_candidates` `ArtifactRef` mapping). Validates existence and checksum; per-edge contents are consumed later by Task 18.
+- Fails before tensor construction with structured `ContractError` on:
+  - `MODEL_BATCH_ARTIFACT_MISSING` / `_UNREADABLE` / `_CHECKSUM_MISMATCH`
+  - `MODEL_BATCH_ARTIFACT_ROLE_MISSING`
+  - `MODEL_BATCH_CONTRACT_VERSION_UNSUPPORTED`
+  - `MODEL_BATCH_REQUIRED_STATE_UNAVAILABLE`
+- Task 17 does not read the rule table; finalized records must already carry `metadata.chemical_state.status`. Missing `metadata.chemical_state` and explicit `unavailable` both fail with `MODEL_BATCH_REQUIRED_STATE_UNAVAILABLE`.
+- Creates no artifacts on disk (no side effects). Output is deterministic across repeated runs with identical inputs.
+- Does NOT check Data Release Gate, split eligibility, quality-tier filtering, or visual check status.
+- Bond-type vocabulary discovered from `core_labels.bond_type` across records → stored in `BatchSpec.bond_type_vocabulary` with `"no_edge"` always at index 0.
+- `inspect_batch --records <path> [--record-id <id>]` (CLI: `python -m covalent_design.model.inspect_batch`) prints deterministic JSON with `schema_version`, `contract_version`, `batch_spec`, `records` (list), `passed`, `errors`, `warnings`. Each per-record entry includes `record_id`, `line`, `error`/`error_code`, `provenance` (target_atom_identity, target_atom_index, target_atom_artifact_role, artifact_refs), `tensor_shapes` (all 9 shape fields + dtype/index_dtype/coordinate_frame), `denominators_expected` (all 10 fields), `batch_spec`, and `warnings`.
+- `inspect_batch` shows error reason (not silent skip) when a record would fail construction.
 
 **Verification:**
 
 ```bash
 pytest tests/model/test_batch.py -q
+python -m covalent_design.model.inspect_batch --records tests/fixtures/model/valid/records.jsonl --record-id REC-001
 ```
 
-### Task 18: Implement Stepwise Candidate Builder For Model State
+### Task 18: Implement Stepwise Candidate Builder
 
-**Goal:** Rebuild candidates from noisy/generated ligand coordinates during model forward.
+**Goal:** Rebuild covalent edge candidates at each denoising timestep from fixed target atom coordinates and current noisy/generated ligand coordinates.
 
 **Files/modules:**
 
@@ -599,11 +615,19 @@ pytest tests/model/test_batch.py -q
 
 **Dependencies:** Tasks 12, 17.
 
+**Contracts:** `StepwiseCandidate`, `StepwiseCandidateSet` — defined in `covalent_design.contracts.types`. See ADR 0035.
+
+**Naming:** Stepwise candidates (dynamic, per-timestep) ≠ static edge candidates (Task 12 artifact, `"edge_candidates"` role). MUST use `StepwiseCandidate` / `StepwiseCandidateSet` naming — never unqualified `edge_candidates`.
+
 **Acceptance criteria:**
 
-- Candidates are built from fixed target atom coordinates and current ligand coordinates.
-- Positive edge is force-included when noise moves it outside radius.
-- Forced positives are counted separately.
+- Builds candidates at each timestep using current ligand coordinates and `candidate_radius_angstrom` (default 4.0).
+- Positive edge label (ligand_atom_index, target_atom, bond_type) read from Task 12 static `edge_candidates.json`.
+- Positive edge force-included when noise moves it outside radius → `is_forced_positive=True`.
+- Forced positives counted separately in `EdgeDenominators.forced_positive_count`.
+- Candidate IDs are per-timestep local indices — NOT stable across timesteps.
+- Ligand_atom_index provides cross-timestep identity for force-inclusion and loss alignment.
+- Reports `empty_radius_window=True` when zero natural negatives exist.
 
 **Verification:**
 
@@ -613,7 +637,7 @@ pytest tests/model/test_stepwise_candidates.py -q
 
 ### Task 19: Implement PMDM Adapter Skeleton
 
-**Goal:** Provide the PMDM-compatible model boundary without modifying upstream PMDM by default.
+**Goal:** Provide the PMDM-compatible model boundary with explicit output key vocabulary.
 
 **Files/modules:**
 
@@ -623,11 +647,20 @@ pytest tests/model/test_stepwise_candidates.py -q
 
 **Dependencies:** Task 17.
 
+**Contracts:** `ModelForwardOutput.pmdm_outputs` key vocabulary — 9 keys (7 required, 2 optional). Defined in `interface-design.md` PMDM Adapter Output Keys table.
+
 **Acceptance criteria:**
 
-- Adapter accepts `ModelBatch` and returns PMDM-compatible outputs in a `ModelForwardOutput`.
-- Checkpoint/config metadata includes contract version and rule table hash fields.
-- Tests use a lightweight fake backbone if PMDM dependencies are unavailable.
+- Adapter accepts `ModelBatch` and returns `ModelForwardOutput`.
+- `pmdm_outputs` dict contains all required keys with correct tensor shapes:
+  - `ligand_atom_features` (B, N_lig, D_lig)
+  - `protein_atom_features` (B, N_prot, D_prot)
+  - `ligand_coords_denoised` (B, N_lig, 3)
+  - `position_loss` (scalar), `atom_type_loss` (scalar)
+  - `timestep` (scalar float), `num_atom` (B,)
+- Optional keys: `ligand_pair_features`, `protein_ligand_pair_features`.
+- Checkpoint/config metadata includes contract version and rule table hash.
+- Fake backbone (test-only): outputs all required keys with deterministic random values, no PMDM import.
 
 **Verification:**
 
@@ -637,7 +670,7 @@ pytest tests/model/test_pmdm_adapter.py -q
 
 ### Task 20: Implement Covalent Heads And Message-Weight Interface
 
-**Goal:** Add edge existence, bond type, and optional family auxiliary output contracts.
+**Goal:** Produce edge logits, bond-type logits, family logits, and detached message weights. Enforce anti-leakage guard at construction time.
 
 **Files/modules:**
 
@@ -647,11 +680,20 @@ pytest tests/model/test_pmdm_adapter.py -q
 
 **Dependencies:** Tasks 18, 19.
 
+**Contracts:** `ModelForwardOutput` (edge_logits, bond_type_logits, family_logits, edge_prob_message_weights, message_weight_source). See ADR 0036.
+
 **Acceptance criteria:**
 
-- Forward output includes edge logits, bond-type logits, optional family logits, and observed denominators.
-- Message weights are detached predicted probabilities.
-- Ground-truth labels cannot be passed as message weights through public APIs.
+- Forward output includes `edge_logits` (B, N_candidates), `bond_type_logits` (B, N_candidates, N_bond_types), `family_logits` (B, N_families), `edge_prob_message_weights` (detached, B, N_candidates), `message_weight_source = "detached_edge_probability"`, `denominators_observed`.
+- v1 **includes** family auxiliary head; `family_logits` is a required field, `family_aux_loss` is a required loss component.
+- `edge_prob_message_weights` is `edge_logits.sigmoid().detach()`.
+- `ModelForwardOutput.__post_init__` validates `not edge_prob_message_weights.requires_grad`.
+- `ModelForwardOutput.__post_init__` validates `message_weight_source == "detached_edge_probability"`; `label`, `ground_truth`, `target_edge`, empty, and unknown sources fail even when `requires_grad == False`.
+- Public API guard: tensor-like message weights with `requires_grad=True` trigger `ValueError`.
+- Provenance/test guard: Task 20 tests must prove `edge_prob_message_weights` comes from the detached model prediction path, not label or ground-truth tensors. `requires_grad=False` alone is not a complete label-leakage proof; source provenance is required.
+- Test `test_message_weights_are_detached` verifies `requires_grad == False`.
+- Negative test: `requires_grad=True` tensor → `ValueError`.
+- Negative test: `message_weight_source` in (`label`, `ground_truth`, `target_edge`) → `ValueError`, even with `requires_grad == False`.
 
 **Verification:**
 
@@ -659,9 +701,9 @@ pytest tests/model/test_pmdm_adapter.py -q
 pytest tests/model/test_covalent_heads.py -q
 ```
 
-### Task 21: Implement Final Decode And Validity Gate Interface
+### Task 21: Implement Final Decode And Validity Gate
 
-**Goal:** Select a valid final covalent edge or emit an invalid decode result.
+**Goal:** Select the highest-scoring gate-passing candidate or emit an invalid decode result with full failure diagnostics. Gate checks execute in defined priority order.
 
 **Files/modules:**
 
@@ -671,11 +713,17 @@ pytest tests/model/test_covalent_heads.py -q
 
 **Dependencies:** Tasks 8, 20.
 
+**Contracts:** Gate execution order (9 checks). Failure priority: `REQUIRED_GATE_STATE_UNAVAILABLE` > first failing gate. See `interface-design.md` Failure Reason Priority.
+
 **Acceptance criteria:**
 
-- Final decode sorts candidates by score and applies rule-first gate checks.
-- All-candidates-fail path returns invalid result metadata, not a forced edge.
-- Gate records edge validity checks and failure reasons.
+- Sorts candidates by score descending.
+- Iterates in order: first candidate passing all 9 gate checks → selected; continues otherwise.
+- Top-1 fail + rank-2 pass → **valid** sample; `secondary_failure_reasons` preserves skipped-candidate failures.
+- All-candidates-fail → `generation_validity_status = "invalid"`, `primary_failure_reason` set to first failure of highest-scoring candidate.
+- `REQUIRED_GATE_STATE_UNAVAILABLE` outranks all specific failures.
+- `edge_validity_checks` includes every evaluated candidate (passed and failed).
+- Never returns a forced edge when all candidates fail.
 
 **Verification:**
 
@@ -685,7 +733,7 @@ pytest tests/model/test_final_decode.py -q
 
 ### Task 22: Implement Training Dataset And Batch Loader
 
-**Goal:** Prepare accepted-core training datasets from validated record bundles and split artifacts.
+**Goal:** Filter accepted records into training splits based on policy, split assignment, and visual/quality gates.
 
 **Files/modules:**
 
@@ -695,11 +743,25 @@ pytest tests/model/test_final_decode.py -q
 
 **Dependencies:** Tasks 14, 17.
 
+**Contracts:** `TrainingDatasetIndex`, `TrainingRecordEntry`, `ExclusionSummary` — defined in `covalent_design.contracts.types`.
+
+**Exclusion priority chain:**
+1. `split != split_name` → not in this dataset
+2. `split == "excluded"` → hard exclude
+3. `visual_check_status != "pass" && policy.exclude_visual_blocked` → exclude
+4. `quality_tier` not in accepted set → exclude
+5. `first_core_only && multi-linkage` → exclude
+6. `exclude_q2 && quality_tier == "Q2"` → exclude
+
 **Acceptance criteria:**
 
-- Default `TrainingDataPolicy(first_core_only=True)` rejects rejected/conflict/multi-linkage indexes.
-- Q2 keep-with-flag records are included only through accepted-core path and retain flags.
-- Dataset consumes verified split manifests.
+- `prepare_dataset(records_path, split_index_path, split_name, policy)` returns `ContractEnvelope[TrainingDatasetIndex]`.
+- Default `TrainingDataPolicy(first_core_only=True)` rejects rejected/conflict/multi-linkage records.
+- Q2 records: included by default; excluded only when `policy.exclude_q2=True`. Flag preserved in `TrainingRecordEntry.quality_tier`.
+- Visual-blocked records: excluded by default (`exclude_visual_blocked=True`). Flag in `visual_check_status`.
+- Scaffold fallback pending records with `split == "excluded"` → hard excluded.
+- `ExclusionSummary` accounts for every excluded record with reason.
+- `TrainingDatasetIndex` is split-specific (one call per train/val/test).
 
 **Verification:**
 
@@ -709,7 +771,7 @@ pytest tests/training/test_dataset.py -q
 
 ### Task 23: Implement Loss Masks And Denominator Reports
 
-**Goal:** Compute loss eligibility masks and denominator counts from model outputs and rule states.
+**Goal:** Compute per-timestep loss eligibility masks with explicit condition decomposition.
 
 **Files/modules:**
 
@@ -719,11 +781,17 @@ pytest tests/training/test_dataset.py -q
 
 **Dependencies:** Tasks 18, 22.
 
+**Contracts:** `MaskAudit` (15 fields), `DenominatorsStratum`. Pending SMARTS + pending geometry interaction rules. Forced-positive loss participation table. See `interface-design.md`.
+
 **Acceptance criteria:**
 
-- Natural positives, forced positives, zero negatives, pending geometry, pending SMARTS, missing state, and Q2 cases are covered.
-- Geometry denominator excludes forced positives by default.
-- Bond-type denominator excludes no-edge negatives and forced positives by default.
+- `MaskAudit` covers: natural positive, forced positive, natural negative, zero negative, masked_by_pending_smarts, masked_by_pending_geometry, masked_by_missing_chemical_state, masked_by_q2_exclusion, masked_by_forced_positive_exclusion, and all five eligible/denominator counts.
+- Forced positive: participates in edge_existence_loss → yes; bond_type_loss → no; geometry_loss → no; message_passing → no; gate_evaluated → yes.
+- Pending SMARTS: masks bond_type_loss and warhead gate; NOT edge_existence_loss or geometry_loss.
+- Pending geometry: masks geometry_loss and geometry gate; NOT edge_existence_loss or bond_type_loss.
+- Both pending: edge_existence_loss unmasked; bond_type and geometry losses both masked.
+- Q2 exclusion only when `policy.exclude_q2=True`.
+- Denominators stratified by `residue_reaction_family` and timestep bucket (`early`/`mid`/`late`).
 
 **Verification:**
 
@@ -733,7 +801,7 @@ pytest tests/training/test_masks_denominators.py -q
 
 ### Task 24: Implement Loss Report And Smoke Training Loop
 
-**Goal:** Run one fixture-based training step and emit structured loss reports.
+**Goal:** Run one fixture-based training step with fake backbone, emit structured `LossReport`.
 
 **Files/modules:**
 
@@ -743,21 +811,47 @@ pytest tests/training/test_masks_denominators.py -q
 
 **Dependencies:** Tasks 20, 23.
 
+**Contracts:** `LossReport` (with `.to_dict()`), smoke config schema `covalent_train_smoke.yml`. See `interface-design.md`.
+
+**Smoke config** (`configs/covalent_train_smoke.yml`):
+```yaml
+model:
+  fake_backbone: true
+  hidden_dim: 128
+  bond_type_vocabulary: ["no_edge", "carbon-sulfur", "disulfide", ...]
+  candidate_radius_angstrom: 4.0
+training:
+  seed: 42
+  steps: 1
+  batch_size: 4
+  learning_rate: 1e-4
+  timestep_buckets: [[0.8, 1.0], [0.3, 0.8], [0.0, 0.3]]
+data:
+  records_path: "tests/fixtures/training/smoke/records.jsonl"
+  split_path: "tests/fixtures/training/smoke/splits/split_index.json"
+  split_name: "train"
+output:
+  run_dir: "outputs/runs/smoke-001"
+```
+
 **Acceptance criteria:**
 
-- `LossReport` includes all PMDM and covalent loss components.
-- Reaction-family consistency through rule masks/gates is required; family auxiliary head remains optional.
-- One smoke step completes with fake or minimal backbone.
+- `LossReport.components` includes all 6 required keys: `pmdm_position_loss`, `pmdm_atom_loss`, `covalent_edge_loss`, `covalent_bond_type_loss`, `covalent_geometry_loss`, `family_aux_loss` (all v1-required).
+- `LossReport` carries `EdgeDenominators`, `MaskAudit`, and `strata`.
+- `.to_dict()` produces JSON-compatible dict matching `train_metrics.jsonl` schema.
+- Smoke step completes on CPU with fake backbone (no PMDM, no GPU).
+- Verification checks denominator field presence and non-negativity — NOT loss convergence.
 
 **Verification:**
 
 ```bash
 pytest tests/training/test_train_smoke.py -q
+python -m covalent_design.training.train --config configs/covalent_train_smoke.yml
 ```
 
 ### Task 25: Implement Training Run Manifest And Checkpoint Metadata
 
-**Goal:** Preserve provenance for train runs and checkpoints.
+**Goal:** Preserve cryptographic provenance for every training run and checkpoint.
 
 **Files/modules:**
 
@@ -767,10 +861,18 @@ pytest tests/training/test_train_smoke.py -q
 
 **Dependencies:** Task 24.
 
+**Contracts:** `TrainingRunManifest`, checkpoint manifest YAML schema, hash computation rules (canonical JSON → SHA-256). Cross-version compatibility: major → hard reject; minor → warn.
+
 **Acceptance criteria:**
 
-- Run manifest stores config hash, record bundle hash, split hash, rule table hash, denominator report URI, and contract version.
-- Checkpoint manifest stores model contract version, rule table version/hash, record bundle hash, and config hash.
+- `TrainingRunManifest` stores: run_id, training_config_resolved_hash, input_hashes (records_jsonl, split_index, rule_table, quality_report, visual_check_index, optional release_gate), checkpoint_dir, train/validation_metrics_uri, denominator_report_uri, train_completed, epochs_completed, steps_completed, crash_recovery.
+- Config hash: resolve config → canonical JSON (sorted keys) → SHA-256.
+- Record bundle hash: SHA-256 of `records.jsonl`.
+- Split hash: SHA-256 of `split_index.json`.
+- Rule table hash: canonical JSON of parsed rule table → SHA-256.
+- Quality report and visual check hashes are included as release-gate provenance. They do not make training runtime re-run the Data Release Gate; they bind the checkpoint audit trail to the approved data-release context.
+- Checkpoint manifest YAML: model_contract_version, rule_table_version, input_hashes, model_weights_uri, optimizer_state_uri, bond_type_vocabulary.
+- Checkpoint loader: major version mismatch → reject; minor mismatch → warn + load.
 
 **Verification:**
 
@@ -782,18 +884,18 @@ pytest tests/training/test_run_manifest.py -q
 
 **Dependencies:** Tasks 17-25.
 
-**Acceptance criteria:**
-
-- Model forward smoke test passes.
-- Training smoke run logs required loss and denominator fields.
-- Forced-positive and Q2 stratification fixtures pass.
-- `python -m compileall -q scripts src` passes.
+**Proof of completion:**
+- `inspect_batch` outputs deterministic JSON for fixture records
+- `forward_smoke` logs PMDM + covalent output shapes
+- Smoke training `train_metrics.jsonl` contains all 6 loss components, `EdgeDenominators` (10 fields), `MaskAudit` (15 fields), and per-family/timestep strata
+- Fixture coverage: natural positive, forced positive, zero negatives, pending geometry, pending SMARTS, missing chemical state, Q2, empty_radius_window
+- `python -m compileall -q scripts src` passes
 
 ## Inference And Evaluation Tasks
 
 ### Task 26: Implement Request Schema And Validation
 
-**Goal:** Reject invalid `ReactiveSiteGenerationRequest` inputs before sampling.
+**Goal:** Validate `ReactiveSiteGenerationRequest` inputs before any sampling. YAML is authoritative format; JSON accepted. Altloc policy: highest occupancy or `A`.
 
 **Files/modules:**
 
@@ -805,19 +907,24 @@ pytest tests/training/test_run_manifest.py -q
 
 **Acceptance criteria:**
 
-- All `REQUEST_*` error fixtures are covered.
-- Ligand size control enforces fixed-or-range-or-absent semantics.
-- Missing required chemical state produces `REQUEST_REQUIRED_CHEMICAL_STATE_UNAVAILABLE`.
+- Request file format: YAML (`.yml`/`.yaml`) authoritative, JSON (`.json`) accepted. Auto-detected by extension.
+- All 13 `REQUEST_*` error codes covered by fixtures.
+- Ligand size control: fixed (`num_ligand_heavy_atoms`), range (`min_`/`max_`), or absent. Conflicting forms → `REQUEST_LIGAND_SIZE_CONFLICT`.
+- Missing required chemical state → `REQUEST_REQUIRED_CHEMICAL_STATE_UNAVAILABLE`.
+- `target_altloc` optional field; when absent → select highest occupancy or `A`.
+- Resolved altloc recorded in `ValidatedRequest.resolved_target_altloc`.
+- Normalised request written as `request.normalized.yml` at generation start.
 
 **Verification:**
 
 ```bash
 pytest tests/inference/test_request_validation.py -q
+python -m covalent_design.inference.validate_request --request request.yml
 ```
 
 ### Task 27: Implement Generation Run Manifest And Sampling Failure Accounting
 
-**Goal:** Separate request errors, attempted samples, and sampling system failures.
+**Goal:** Return `GenerationRunManifest`, separate sampling system failures from results, count at sample_id granularity.
 
 **Files/modules:**
 
@@ -827,11 +934,18 @@ pytest tests/inference/test_request_validation.py -q
 
 **Dependencies:** Task 26.
 
+**Contracts:** `GenerationRunManifest`, `SamplingSystemFailure` — defined in `covalent_design.contracts.types`. Retry policy: sample_id granularity, retries do not change denominator.
+
 **Acceptance criteria:**
 
-- `generate()` returns a `GenerationRunManifest`, not a list of results.
-- Sampler crash, OOM, timeout, and retry exhaustion write `sampling_system_failures.jsonl`.
-- Accepted request counts reconcile as attempted plus sampling-system-failed.
+- `generate()` returns `ContractEnvelope[GenerationRunManifest]`, not `list[CovalentGenerationResult]`.
+- `GenerationRunManifest` includes: job_id, checkpoint_ref, accepted_request_sample_count, attempted_sample_count, sampling_system_failure_count, result_count, artifacts.
+- `SamplingSystemFailure` includes: request_id, sample_id, failure_category (6 values), failure_timestamp, traceback_hash, log_uri, retry_count, resource_snapshot, message.
+- `accepted_request_sample_count = attempted_sample_count + sampling_system_failure_count`.
+- `attempted_sample_count` is per sample_id, not per attempt. Retries are internal.
+- `sampling_system_failure_count` is deduplicated by sample_id (only fully-failed samples).
+- Each crash writes one row to `sampling_system_failures.jsonl` (retry_count = 0, 1, ...); final exhausted writes final row.
+- Sampling failures and results are sibling artifacts so evaluation can enforce reconciliation.
 
 **Verification:**
 
@@ -841,7 +955,7 @@ pytest tests/inference/test_sampling_failures.py -q
 
 ### Task 28: Implement Generation Result Writer
 
-**Goal:** Write one `CovalentGenerationResult` row per attempted sample.
+**Goal:** Write one complete `CovalentGenerationResult` row per attempted sample with lifecycle validation. Pure Python API — no independent CLI.
 
 **Files/modules:**
 
@@ -851,11 +965,16 @@ pytest tests/inference/test_sampling_failures.py -q
 
 **Dependencies:** Tasks 21, 27.
 
+**Contracts:** Full `CovalentGenerationResult` (~30 fields) defined in `covalent_design.contracts.types`.
+
 **Acceptance criteria:**
 
-- Valid and invalid sample rows validate lifecycle constraints.
-- Invalid rows preserve available ligand, edge, geometry, warhead, and failure diagnostics.
+- One result row per attempted sample.
+- Valid samples: `generation_validity_status = "valid"`, ligand/edge/geometry/warhead fields populated.
+- Invalid samples: `primary_failure_reason` set, `secondary_failure_reasons` with all observed failures, ligand files preserved if parseable.
+- Lifecycle constraints enforced at write time (e.g., invalid → export = not_applicable).
 - Request validation errors never create result rows.
+- Result writer is called inside `generate()` loop; no standalone CLI.
 
 **Verification:**
 
@@ -865,7 +984,7 @@ pytest tests/inference/test_result_writer.py -q
 
 ### Task 29: Implement mmCIF-First Export Interface
 
-**Goal:** Export valid covalent complexes or record export failure lifecycle status.
+**Goal:** Export valid covalent complexes as mmCIF through the project-owned writer or adapter boundary.
 
 **Files/modules:**
 
@@ -875,11 +994,15 @@ pytest tests/inference/test_result_writer.py -q
 
 **Dependencies:** Task 28.
 
+**Writer:** project-owned mmCIF writer or adapter boundary. RDKit may be enabled later as an optional backend only after the exact API is source-verified; default CI uses fixture/project-owned writer tests and does not require RDKit. Source-verification status (2026-05-27): the official RDKit `rdkit.Chem.rdmolfiles` API reference (`https://rdkit.org/docs/source/rdkit.Chem.rdmolfiles.html`) was checked for an mmCIF writer and no v1 backend API is frozen from that source.
+
 **Acceptance criteria:**
 
-- Valid result exports authoritative mmCIF with structured linkage identity when possible.
-- Export failure produces `COMPLEX_EXPORT_FAILED` and leaves docking eligibility not applicable.
-- PDB export is optional compatibility output only.
+- `write_covalent_complex(result, protein_atom_table, ligand_coords, ligand_atom_types, ligand_bonds, covalent_edge, out_path) → ArtifactRef`.
+- Exports `_atom_site.*` for protein + ligand, `_struct_conn` with `covale` type, `_entry.id`.
+- Returns `ArtifactRef` with sha256 of written file.
+- Export failure → `ContractError(code="COMPLEX_EXPORT_FAILED")` → `complex_export_status = "failed"`.
+- PDB export (LINK/CONECT) is optional compatibility output only.
 
 **Verification:**
 
@@ -889,7 +1012,7 @@ pytest tests/inference/test_complex_export.py -q
 
 ### Task 30: Implement Evaluation Summary And Denominator Checks
 
-**Goal:** Produce lifecycle-aware evaluation summaries from generation run artifacts.
+**Goal:** Produce global (unstratified) `EvaluationSummary` with manifest-first input. All 6 conservation equations enforced.
 
 **Files/modules:**
 
@@ -899,11 +1022,21 @@ pytest tests/inference/test_complex_export.py -q
 
 **Dependencies:** Tasks 27, 28.
 
+**CLI:** Manifest-first:
+
+```bash
+python -m covalent_design.evaluation.summarize_results \
+    --manifest outputs/generation/<job_id>/run_manifest.yml
+```
+
 **Acceptance criteria:**
 
-- Evaluation uses run manifest counts, results, and sampling failure artifacts.
-- All conservation equations are enforced.
-- Invalid samples are retained in validity and failure-mode denominators.
+- `summarize_results(manifest)` reads manifest → loads results and failures by checksum-validated paths → computes `EvaluationSummary`.
+- MUST NOT infer counts from files on disk.
+- All 6 conservation equations enforced.
+- Invalid samples retained in validity and failure-mode denominators.
+- Task 30 output: `evaluation_summary.json` (global, no strata).
+- Stratified reports → Task 33.
 
 **Verification:**
 
@@ -913,7 +1046,7 @@ pytest tests/evaluation/test_denominator_accounting.py -q
 
 ### Task 31: Implement Lifecycle Validation And Failure Mode Reports
 
-**Goal:** Reject corrupt result states before aggregation and report failure modes.
+**Goal:** Reject corrupt lifecycle rows before aggregation; group failures by primary/secondary reason with lifecycle stage preserved.
 
 **Files/modules:**
 
@@ -925,8 +1058,8 @@ pytest tests/evaluation/test_denominator_accounting.py -q
 
 **Acceptance criteria:**
 
-- Corrupt succeeded-docking lifecycle fixtures are rejected before metric aggregation.
-- Primary and secondary failure reasons are grouped without hiding lifecycle stage.
+- Corrupt lifecycle rows (e.g., `docking_run_status = succeeded` but `generation_validity_status = invalid`) rejected before aggregation.
+- Primary and secondary failure reasons grouped by `residue_reaction_family`.
 - Reports stratify by `residue_reaction_family`.
 
 **Verification:**
@@ -937,7 +1070,7 @@ pytest tests/evaluation/test_lifecycle_reports.py -q
 
 ### Task 32: Implement Docking Protocol Manifest Interface
 
-**Goal:** Validate covalent docking protocol manifests and protect docking score eligibility.
+**Goal:** Validate docking protocol manifests. Only valid + exported + eligible + succeeded + complete-manifest samples enter `DockingScoreEligibleResultIndex`.
 
 **Files/modules:**
 
@@ -948,9 +1081,9 @@ pytest tests/evaluation/test_lifecycle_reports.py -q
 
 **Acceptance criteria:**
 
-- Complete protocol manifest is required for covalent docking scores.
-- QuickVina2-only fixture can populate `noncovalent_vina_score` but not `covalent_docking_score`.
-- `DockingScoreEligibleResultIndex` includes only valid, exported, eligible, succeeded samples with complete protocol manifests.
+- Complete protocol manifest required for `covalent_docking_score`.
+- QuickVina2-only fixture → `noncovalent_vina_score` populated, `covalent_docking_score = null`.
+- `DockingScoreEligibleResultIndex` includes only valid, exported, eligible, succeeded samples with complete manifests.
 
 **Verification:**
 
@@ -960,7 +1093,7 @@ pytest tests/evaluation/test_docking_protocol.py -q
 
 ### Task 33: Implement Split-Aware Evaluation Reports
 
-**Goal:** Report primary protein-cluster and scaffold results without random-only leakage.
+**Goal:** Stratified per-split, per-family evaluation reports with protein-cluster and scaffold primary metrics.
 
 **Files/modules:**
 
@@ -972,9 +1105,12 @@ pytest tests/evaluation/test_docking_protocol.py -q
 
 **Acceptance criteria:**
 
-- Reports include protein-cluster and de-warheaded scaffold primary metrics.
-- Random split is clearly labeled as debug/secondary.
-- Scaffold fallback exclusions are reported.
+- Per-split `EvaluationSummary` for each of train/val/test.
+- Per-family breakdown within each split.
+- Protein-cluster and de-warheaded scaffold as primary metrics.
+- Random split labeled as debug/secondary.
+- Scaffold fallback exclusions reported.
+- Output: `stratified_evaluation_summary.json`.
 
 **Verification:**
 
@@ -986,11 +1122,14 @@ pytest tests/evaluation/test_split_reports.py -q
 
 **Dependencies:** Tasks 26-33.
 
-**Acceptance criteria:**
-
-- Request validation, result lifecycle, sampling failure, mmCIF export, denominator, and docking protocol fixtures pass.
-- Evaluation denominator equations pass.
-- `python -m compileall -q scripts src` passes.
+**Proof of completion:**
+- All 13 request validation error fixtures pass
+- `SamplingSystemFailure` fixtures: crash, OOM, timeout, retry_exhausted
+- Valid and invalid `CovalentGenerationResult` fixtures with complete diagnostics
+- mmCIF export valid + export-failure fixtures through the project-owned writer/adapter boundary
+- Evaluation denominator equations pass on golden summaries
+- Docking protocol manifest validation passes; QuickVina2-only rejected
+- `python -m compileall -q scripts src` passes
 
 ## Governance And Fixture Tasks
 
@@ -1105,5 +1244,5 @@ pytest tests/contracts tests/io tests/data tests/rules -q
 - Which protein chemical-state inference tool and confidence policy are accepted?
 - Which protein clustering method and threshold define the primary target split?
 - Which covalent docking engine and constraint representation are authoritative?
-- Which mmCIF writer should be used?
+- Which optional chemistry backend, if any, should implement the mmCIF writer adapter after source verification?
 - What are the initial covalent loss weights and edge-score thresholds?
