@@ -1,0 +1,50 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "record_id": "m02a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+  "role": "edge_candidates",
+  "lineage": [
+    {
+      "raw_file_path": "/fixture/model-valid-b.json",
+      "raw_file_sha256": "fixture-model-b-lineage-sha256",
+      "raw_manifest_file": "model-fixture-manifest.json",
+      "row_index": 1,
+      "source_database": "covpdb",
+      "source_record_id": "model-valid-b",
+      "source_version": "2026-03-15"
+    }
+  ],
+  "positive_edge": {
+    "target_atom_name": "SG",
+    "target_atom_element": "S",
+    "ligand_atom_name": "C4",
+    "ligand_atom_element": "C",
+    "distance_angstrom": 1.79
+  },
+  "negative_edges": [
+    {
+      "ligand_atom_name": "C5",
+      "ligand_atom_element": "C",
+      "distance_angstrom": 2.88
+    },
+    {
+      "ligand_atom_name": "C6",
+      "ligand_atom_element": "C",
+      "distance_angstrom": 3.45
+    }
+  ],
+  "denominators": {
+    "candidate_count": 3,
+    "natural_candidate_count": 3,
+    "forced_positive_count": 0,
+    "eligible_edge_count": 3,
+    "masked_candidate_count": 0,
+    "edge_loss_denominator": 3,
+    "bond_type_loss_denominator": 3,
+    "geometry_loss_denominator": 3,
+    "message_passing_candidate_count": 3,
+    "gate_evaluated_count": 3
+  },
+  "artifact_refs": [],
+  "empty_radius_window": false
+}

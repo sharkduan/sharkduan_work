@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "record_id": "m03deadbeefdeadbeefdeadbeefdead",
+  "role": "edge_candidates",
+  "positive_edge": {"target_atom_name": "SG", "target_atom_element": "S", "ligand_atom_name": "C1", "ligand_atom_element": "C", "distance_angstrom": 1.82},
+  "negative_edges": [],
+  "denominators": {"candidate_count": 1, "natural_candidate_count": 1, "forced_positive_count": 0, "eligible_edge_count": 1, "masked_candidate_count": 0, "edge_loss_denominator": 1, "bond_type_loss_denominator": 1, "geometry_loss_denominator": 1, "message_passing_candidate_count": 1, "gate_evaluated_count": 1},
+  "artifact_refs": [],
+  "empty_radius_window": false
+}

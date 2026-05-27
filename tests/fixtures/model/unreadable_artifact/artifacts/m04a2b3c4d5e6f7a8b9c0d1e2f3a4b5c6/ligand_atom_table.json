@@ -1,0 +1,7 @@
+{
+  "atoms": [
+    {"index": 1, "name": "C1", "element": "C", "x": 10.111, "y": 20.222, "z": 30.333},
+    {"index": 2, "name": "C2", "element": "C", "x": 11.222, "y": 21.333, "z": 31.444}
+  ],
+  "ligand_id": "LIG"
+}
