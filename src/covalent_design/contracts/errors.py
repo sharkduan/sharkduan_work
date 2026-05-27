@@ -67,12 +67,12 @@ def exit_code_for_error(error: Union[ContractError, ContractErrorInfo]) -> int:
         return CLI_EXIT_CODES["request_validation_failed"]
     if "DENOMINATOR" in error.code or "CONSERVATION" in error.code:
         return CLI_EXIT_CODES["denominator_conservation_failed"]
+    if error.owner in ("model", "training"):
+        return CLI_EXIT_CODES["model_or_training_contract_violation"]
     if "ARTIFACT" in error.code or "CHECKSUM" in error.code:
         return CLI_EXIT_CODES["artifact_missing_or_checksum_mismatch"]
     if error.owner == "data":
         return CLI_EXIT_CODES["data_quality_gate_failed"]
-    if error.owner in ("model", "training"):
-        return CLI_EXIT_CODES["model_or_training_contract_violation"]
     if error.owner == "evaluation" and "DOCKING" in error.code:
         return CLI_EXIT_CODES["docking_protocol_invalid_or_not_evaluable"]
     if "VERSION" in error.code:
