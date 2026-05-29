@@ -615,19 +615,63 @@ python -m covalent_design.model.inspect_batch --records tests/fixtures/model/val
 
 **Dependencies:** Tasks 12, 17.
 
-**Contracts:** `StepwiseCandidate`, `StepwiseCandidateSet` — defined in `covalent_design.contracts.types`. See ADR 0035.
+**Contracts:** `StepwiseCandidate`, `StepwiseCandidateSet`, `EdgeDenominators`, `ProteinAtomIdentity` — defined in `covalent_design.contracts.types`. See ADR 0035.
 
 **Naming:** Stepwise candidates (dynamic, per-timestep) ≠ static edge candidates (Task 12 artifact, `"edge_candidates"` role). MUST use `StepwiseCandidate` / `StepwiseCandidateSet` naming — never unqualified `edge_candidates`.
 
+**Public API:**
+
+```python
+def build_stepwise_candidates(
+    *,
+    protein_atoms: list[dict],
+    ligand_atoms: list[dict],
+    edge_candidates_artifact: dict,
+    timestep_index: int,
+    timestep_value: float,
+    candidate_radius_angstrom: float = 4.0,
+) -> StepwiseCandidateSet:
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `protein_atoms` | `list[dict]` | Fixed protein atom dicts. Must contain `"name"`, `"x"`, `"y"`, `"z"`. Target atom coordinates are resolved from this list by matching `"name"` against the artifact's `target_atom.atom_name`. |
+| `ligand_atoms` | `list[dict]` | Current-timestep noisy/generated ligand atom dicts. Must contain `"x"`, `"y"`, `"z"`. The `"index"` key is used when present; otherwise list position is the position-based fallback. |
+| `edge_candidates_artifact` | `dict` | Task 12 static `edge_candidates.json` artifact. Positive label identity is read from `artifact["positive_edge"]` → `ligand_atom_index`, `target_atom`, `bond_type`. |
+| `timestep_index` | `int` | Integer index of the current denoising timestep (passed through to `StepwiseCandidateSet.timestep_index`). |
+| `timestep_value` | `float` | Current noise level t ∈ [0, 1] (passed through to `StepwiseCandidateSet.timestep_value`). |
+| `candidate_radius_angstrom` | `float` | Radius in angstroms for natural-candidate inclusion. Ligand atoms with distance `< candidate_radius_angstrom` become natural candidates. Default 4.0. |
+
+**Return:** `StepwiseCandidateSet` — immutable dataclass with:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `timestep_index` | `int` | As passed by caller. |
+| `timestep_value` | `float` | As passed by caller. |
+| `candidates` | `tuple[StepwiseCandidate, ...]` | Sorted positive-first, then negatives by distance (ascending). |
+| `positive_label_ligand_atom_index` | `int` | From `edge_candidates_artifact["positive_edge"]["ligand_atom_index"]`. |
+| `positive_label_target_atom` | `ProteinAtomIdentity` | From `edge_candidates_artifact["positive_edge"]["target_atom"]`. |
+| `positive_label_bond_type` | `str` | From `edge_candidates_artifact["positive_edge"]["bond_type"]`. |
+| `denominators` | `EdgeDenominators` | Per-timestep counts (10 fields). |
+| `empty_radius_window` | `bool` | `True` iff `natural_negative_count == 0`. |
+
 **Acceptance criteria:**
 
-- Builds candidates at each timestep using current ligand coordinates and `candidate_radius_angstrom` (default 4.0).
-- Positive edge label (ligand_atom_index, target_atom, bond_type) read from Task 12 static `edge_candidates.json`.
+- Builds candidates at each timestep using current `ligand_atoms` coordinates and `candidate_radius_angstrom` (default 4.0).
+- Natural candidates use strict distance `< candidate_radius_angstrom` (not `<=`).
+- Positive edge label (`ligand_atom_index`, `target_atom`, `bond_type`) read from Task 12 static `edge_candidates.json` — NOT from caller-supplied parameters.
+- Target atom coordinates are fixed from `protein_atoms`; ligand coordinates come from the `ligand_atoms` argument every timestep.
 - Positive edge force-included when noise moves it outside radius → `is_forced_positive=True`.
-- Forced positives counted separately in `EdgeDenominators.forced_positive_count`.
-- Candidate IDs are per-timestep local indices — NOT stable across timesteps.
-- Ligand_atom_index provides cross-timestep identity for force-inclusion and loss alignment.
-- Reports `empty_radius_window=True` when zero natural negatives exist.
+- Forced positives increment `EdgeDenominators.forced_positive_count` and are excluded from `bond_type_loss_denominator`, `geometry_loss_denominator`, and `message_passing_candidate_count`.
+- `local_index` is a contiguous per-timestep index starting from 0; it restarts on every call and has NO cross-timestep meaning.
+- `ligand_atom_index` is the stable cross-timestep identity used for force-inclusion checks and loss alignment.
+- Reports `empty_radius_window=True` when zero natural negatives exist. This is a valid state, not a failure.
+- The function is a pure in-memory computation; it creates no artifacts on disk.
+- Deterministic: same inputs always produce identical output.
+- Does NOT import RDKit or torch.
+- Task 18 does **not** implement PMDM adapter, covalent heads, message passing, loss masks, final decode, training, inference, or evaluation.
 
 **Verification:**
 
@@ -637,7 +681,25 @@ pytest tests/model/test_stepwise_candidates.py -q
 
 ### Task 19: Implement PMDM Adapter Skeleton
 
-**Goal:** Provide the PMDM-compatible model boundary with explicit output key vocabulary.
+**Goal:** Provide the PMDM-compatible model boundary with explicit output key vocabulary, shape validation, and fake backbone smoke path. Task 20 fields are explicit smoke placeholders.
+
+**Public API:**
+
+```python
+def forward_pmdm(
+    *,
+    batch: ModelBatch,
+    config: ModelConfig,
+    timestep: float = 0.5,
+) -> ModelForwardOutput: ...
+
+def validate_pmdm_outputs(
+    pmdm_outputs: dict,
+    *,
+    batch: ModelBatch,
+    config: ModelConfig,
+) -> None: ...
+```
 
 **Files/modules:**
 
@@ -647,20 +709,52 @@ pytest tests/model/test_stepwise_candidates.py -q
 
 **Dependencies:** Task 17.
 
-**Contracts:** `ModelForwardOutput.pmdm_outputs` key vocabulary — 9 keys (7 required, 2 optional). Defined in `interface-design.md` PMDM Adapter Output Keys table.
+**Contracts:** `ModelConfig` frozen dataclass, `ModelForwardOutput.pmdm_outputs` key vocabulary — 9 keys (7 required, 2 optional), `SMOKE_PLACEHOLDER` sentinel. Defined in `interface-design.md` ModelConfig and PMDM Adapter Output Keys sections.
 
-**Acceptance criteria:**
+**Acceptance criteria (16 requirements):**
 
-- Adapter accepts `ModelBatch` and returns `ModelForwardOutput`.
-- `pmdm_outputs` dict contains all required keys with correct tensor shapes:
-  - `ligand_atom_features` (B, N_lig, D_lig)
-  - `protein_atom_features` (B, N_prot, D_prot)
-  - `ligand_coords_denoised` (B, N_lig, 3)
-  - `position_loss` (scalar), `atom_type_loss` (scalar)
-  - `timestep` (scalar float), `num_atom` (B,)
-- Optional keys: `ligand_pair_features`, `protein_ligand_pair_features`.
-- Checkpoint/config metadata includes contract version and rule table hash.
-- Fake backbone (test-only): outputs all required keys with deterministic random values, no PMDM import.
+1. **Fake backbone smoke fixture:** produces valid PMDM outputs with correct shapes using pure Python nested lists and deterministic `random.Random(seed)` — no real PMDM, PocketFlow, torch, or RDKit import.
+2. **Adapter accepts ModelBatch:** `forward_pmdm(*, batch=..., config=..., timestep=0.5)` accepts a `ModelBatch` instance constructed by Task 17 fixtures.
+3. **Returns ModelForwardOutput:** output type is `ModelForwardOutput` with populated `pmdm_outputs` and `denominators_observed`.
+4. **All 7 required keys present:** `ligand_atom_features`, `protein_atom_features`, `ligand_coords_denoised`, `position_loss`, `atom_type_loss`, `timestep`, `num_atom`.
+5. **Optional keys disabled by default:** when `ligand_pair_feature_dim == 0` and `protein_ligand_pair_feature_dim == 0`, optional keys (`ligand_pair_features`, `protein_ligand_pair_features`) must be absent from `pmdm_outputs`.
+6. **Optional keys enabled by config:** when `ligand_pair_feature_dim > 0` and `protein_ligand_pair_feature_dim > 0`, optional keys must be present with correct shapes.
+7. **Required shapes:**
+   - `ligand_atom_features` (B, N_lig, D_lig)
+   - `protein_atom_features` (B, N_prot, D_prot)
+   - `ligand_coords_denoised` (B, N_lig, 3)
+   - `position_loss` scalar, `atom_type_loss` scalar
+   - `timestep` scalar float, `num_atom` (B,)
+8. **Missing required key raises ContractError:** `validate_pmdm_outputs` raises `ContractError(code="PMDM_MISSING_REQUIRED_KEY", owner="model")` when a required key is absent.
+9. **Wrong shape raises ContractError:** `validate_pmdm_outputs` raises `ContractError(code="PMDM_SHAPE_MISMATCH", owner="model")` when a value has unexpected shape.
+10. **Deterministic output with same seed:** two `forward_pmdm` calls with identical `batch`, `config`, and `timestep` produce byte-identical `pmdm_outputs`.
+11. **Different seed changes output:** different seeds produce different non-scalar outputs.
+12. **ModelConfig carries contract_version and rule_table_hash:** `ModelConfig` is a frozen dataclass with `contract_version` (default `"1.0.0"`) and `rule_table_hash` (default `""`).
+13. **ModelConfig.to_dict() is deterministic:** repeated calls produce identical output; two instances with identical fields produce identical dicts; output is JSON-serializable.
+14. **No PMDM/PocketFlow/torch/RDKit imports:** importing `pmdm_adapter` or `config` must not pull in PMDM, PocketFlow, torch, or RDKit.
+15. **No Task 20 modules imported:** importing `pmdm_adapter` or `config` must not pull in `covalent_heads`, `edge_message_passing`, `final_decode`, `validity_gate`, or other Task 20+ modules.
+16. **No artifacts generated:** `forward_pmdm`, `validate_pmdm_outputs`, and `ModelConfig` construction create no files on disk.
+
+**Task 20 fields are explicit smoke placeholders:**
+
+`ModelForwardOutput.edge_logits`, `.bond_type_logits`, `.family_logits`, and `.edge_prob_message_weights` are `SMOKE_PLACEHOLDER` sentinels — not real logits, not detached sigmoid message weights, not covalent heads, not message passing. Task 19 does NOT implement covalent heads, message passing, real logits, or detached sigmoid message weights.
+
+`message_weight_source` is set to `"detached_edge_probability"` to satisfy the public anti-leakage guard in `ModelForwardOutput.__post_init__`. Task 19 does NOT prove Task 20 message-weight provenance.
+
+`ModelForwardOutput.__post_init__` validates:
+- `edge_prob_message_weights.requires_grad == False` (rejects trainable tensors)
+- `message_weight_source in ALLOWED_MESSAGE_WEIGHT_SOURCES` (rejects label, ground_truth, target_edge, and unknown sources)
+
+**Shape validation coverage:**
+
+`validate_pmdm_outputs` raises `ContractError` on:
+- `PMDM_MISSING_REQUIRED_KEY` — required key absent
+- `PMDM_UNKNOWN_KEY` — key not in the 9-key vocabulary
+- `PMDM_SHAPE_MISMATCH` — wrong shape for a required or optional key
+- `PMDM_MISSING_OPTIONAL_KEY` — optional key absent when config enables it
+- `PMDM_UNEXPECTED_OPTIONAL_KEY` — optional key present when config disables it
+
+**No training/inference/evaluation artifacts:** `forward_pmdm`, `validate_pmdm_outputs`, and `ModelConfig` construction create no model, training, inference, or evaluation artifacts on disk.
 
 **Verification:**
 
@@ -670,7 +764,7 @@ pytest tests/model/test_pmdm_adapter.py -q
 
 ### Task 20: Implement Covalent Heads And Message-Weight Interface
 
-**Goal:** Produce edge logits, bond-type logits, family logits, and detached message weights. Enforce anti-leakage guard at construction time.
+**Goal:** Produce edge logits, bond-type logits, family logits, and detached message weights. Enforce anti-leakage guard at construction time and at the message-passing boundary.
 
 **Files/modules:**
 
@@ -682,18 +776,48 @@ pytest tests/model/test_pmdm_adapter.py -q
 
 **Contracts:** `ModelForwardOutput` (edge_logits, bond_type_logits, family_logits, edge_prob_message_weights, message_weight_source). See ADR 0036.
 
+**Public API:**
+
+```python
+def forward_covalent(
+    *,
+    pmdm_output: ModelForwardOutput,
+    batch: ModelBatch,
+    config: ModelConfig,
+    num_families: int | None = None,
+) -> ModelForwardOutput:
+```
+
+Consumes a Task 19 `ModelForwardOutput` (which carries `SMOKE_PLACEHOLDER` sentinels in its covalent fields) and a `ModelBatch`. Returns a new `ModelForwardOutput` with real pure-Python tensor-like objects (`_CovalentTensor`) replacing the smoke placeholders.
+
+Task 20 does **not** wrap or reimplement `forward_pmdm()`. It is a separate composition step: `forward_pmdm()` produces the PMDM backbone output with smoke placeholders; `forward_covalent()` consumes that output to fill in the covalent head logits and detached message weights.
+
+```python
+def apply_edge_message_weights(
+    *,
+    message_weights: object,
+    source: str,
+) -> object:
+```
+
+Validates the Task 20 message-weight boundary. Accepts only `message_weight_source = "detached_edge_probability"` with detached (`requires_grad == False`) prediction weights. Rejects label, ground-truth, target-edge, unknown, and trainable sources. This function is a no-op passthrough after validation; final decode and loss behavior remain later-task scope.
+
 **Acceptance criteria:**
 
+- `forward_covalent` consumes Task 19 `ModelForwardOutput` (with smoke placeholders) plus `ModelBatch` and `ModelConfig`, and returns a new `ModelForwardOutput` with real logits.
 - Forward output includes `edge_logits` (B, N_candidates), `bond_type_logits` (B, N_candidates, N_bond_types), `family_logits` (B, N_families), `edge_prob_message_weights` (detached, B, N_candidates), `message_weight_source = "detached_edge_probability"`, `denominators_observed`.
 - v1 **includes** family auxiliary head; `family_logits` is a required field, `family_aux_loss` is a required loss component.
+- `N_bond_types` read from `BatchSpec.bond_type_vocabulary`; `N_families` auto-detected from `batch.records` family distribution when `num_families=None`.
 - `edge_prob_message_weights` is `edge_logits.sigmoid().detach()`.
 - `ModelForwardOutput.__post_init__` validates `not edge_prob_message_weights.requires_grad`.
 - `ModelForwardOutput.__post_init__` validates `message_weight_source == "detached_edge_probability"`; `label`, `ground_truth`, `target_edge`, empty, and unknown sources fail even when `requires_grad == False`.
+- `apply_edge_message_weights` is a Task 20 boundary guard (not Task 21 final decode or Task 24 loss). It rejects forbidden sources (`"label"`, `"ground_truth"`, `"target_edge"`) and unknown sources with `ValueError`. It also rejects trainable weights (`requires_grad == True`).
 - Public API guard: tensor-like message weights with `requires_grad=True` trigger `ValueError`.
 - Provenance/test guard: Task 20 tests must prove `edge_prob_message_weights` comes from the detached model prediction path, not label or ground-truth tensors. `requires_grad=False` alone is not a complete label-leakage proof; source provenance is required.
 - Test `test_message_weights_are_detached` verifies `requires_grad == False`.
 - Negative test: `requires_grad=True` tensor → `ValueError`.
 - Negative test: `message_weight_source` in (`label`, `ground_truth`, `target_edge`) → `ValueError`, even with `requires_grad == False`.
+- Negative test: unknown/empty `message_weight_source` → `ValueError`.
 
 **Verification:**
 
@@ -713,17 +837,49 @@ pytest tests/model/test_covalent_heads.py -q
 
 **Dependencies:** Tasks 8, 20.
 
-**Contracts:** Gate execution order (9 checks). Failure priority: `REQUIRED_GATE_STATE_UNAVAILABLE` > first failing gate. See `interface-design.md` Failure Reason Priority.
+**Contracts:** Gate execution order (9 checks, stored in `_SPEC_GATE_ORDER`). `REQUIRED_GATE_STATE_UNAVAILABLE` is a global blocking condition. `FinalDecodeResult` with 6 fields including `selected_score`. See `interface-design.md` Failure Reason Priority.
+
+**Public API:**
+
+```python
+# ValidityGate protocol (abstract, in validity_gate.py)
+class ValidityGate(abc.ABC):
+    @abc.abstractmethod
+    def evaluate(
+        self,
+        candidate_index: int,
+        candidate: dict,
+        state: Any,
+    ) -> tuple[EdgeValidityCheck, ...]: ...
+
+# Final decode (in final_decode.py)
+FinalLigandState = Dict[str, Any]  # dict with "candidates" key
+
+def decode_final_edge(
+    final_state: FinalLigandState,
+    gate: Any,  # protocol: .evaluate(int, dict, Any) -> tuple[EdgeValidityCheck, ...]
+) -> FinalDecodeResult: ...
+```
+
+**Constant: `_SPEC_GATE_ORDER`** (tuple of 9 strings, in gate evaluation order):
+`target_atom`, `ligand_atom_class`, `bond_type`, `single_edge_representability`, `warhead_smarts`, `forbidden_smarts`, `valence`, `protonation`, `geometry`.
+
+**Constant: `_REQUIRED_GATE_STATE_UNAVAILABLE = "REQUIRED_GATE_STATE_UNAVAILABLE"`**
 
 **Acceptance criteria:**
 
-- Sorts candidates by score descending.
-- Iterates in order: first candidate passing all 9 gate checks → selected; continues otherwise.
-- Top-1 fail + rank-2 pass → **valid** sample; `secondary_failure_reasons` preserves skipped-candidate failures.
+- Sorts candidates by score descending with deterministic tie-breaking (original list index).
+- Iterates in order: first candidate passing all applicable gate checks (`pass` or `not_applicable`) -> selected; continues otherwise.
+- Top-1 fail + rank-2 pass → **valid** sample; `secondary_failure_reasons` preserves deduplicated first-failure codes from each skipped higher-scoring candidate.
 - All-candidates-fail → `generation_validity_status = "invalid"`, `primary_failure_reason` set to first failure of highest-scoring candidate.
-- `REQUIRED_GATE_STATE_UNAVAILABLE` outranks all specific failures.
-- `edge_validity_checks` includes every evaluated candidate (passed and failed).
-- Never returns a forced edge when all candidates fail.
+- Zero candidates → `"invalid"` with `primary_failure_reason = "NO_COVALENT_EDGE_PREDICTED"`.
+- `REQUIRED_GATE_STATE_UNAVAILABLE` is a **global blocking condition**: if any evaluated candidate has a `not_evaluable` check, no candidate can be selected. The blocking failure code is `"REQUIRED_GATE_STATE_UNAVAILABLE:{check_name}"`.
+- `primary_failure_reason` priority chain (all-fail): blocking required-state failure > best candidate first failure > `"NO_COVALENT_EDGE_PREDICTED"`.
+- `FinalDecodeResult` has 6 fields: `generation_validity_status`, `selected_edge`, `primary_failure_reason`, `secondary_failure_reasons`, `edge_validity_checks`, `selected_score`.
+- `edge_validity_checks` includes one `EdgeValidityCheck` per check per evaluated candidate (passed and failed).
+- Never returns a forced edge when all candidates fail (`selected_edge` is `None` for invalid).
+- `primary_failure_reason` is `None` for valid results; non-`None` for invalid.
+- Deterministic: same inputs always produce identical output. Does not mutate input state.
 
 **Verification:**
 
