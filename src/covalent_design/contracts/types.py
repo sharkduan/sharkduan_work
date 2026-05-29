@@ -55,12 +55,12 @@ EdgeValidityCheckName = (
     "target_atom",
     "ligand_atom_class",
     "bond_type",
+    "single_edge_representability",
     "warhead_smarts",
     "forbidden_smarts",
     "valence",
     "protonation",
     "geometry",
-    "single_edge_representability",
 )
 EdgeValidityCheckStatus = ("pass", "fail", "not_applicable", "not_evaluable")
 
