@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "contract_version": "1.0.0",
+  "record_id": "sc01a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+  "role": "edge_candidates",
+  "positive_edge": {
+    "ligand_atom_index": 0,
+    "target_atom": {
+      "chain_id": "A",
+      "residue_number": 42,
+      "residue_name": "CYS",
+      "atom_name": "SG"
+    },
+    "bond_type": "carbon-sulfur"
+  },
+  "denominators": {
+    "candidate_count": 3,
+    "natural_candidate_count": 3,
+    "forced_positive_count": 0,
+    "eligible_edge_count": 3,
+    "masked_candidate_count": 0,
+    "edge_loss_denominator": 3,
+    "bond_type_loss_denominator": 3,
+    "geometry_loss_denominator": 3,
+    "message_passing_candidate_count": 3,
+    "gate_evaluated_count": 3
+  }
+}
