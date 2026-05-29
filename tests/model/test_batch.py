@@ -65,7 +65,7 @@ def _raise_if_missing() -> None:
     if not _IMPORT_ERRORS:
         return
     raise unittest.SkipTest(
-        "Production code not yet implemented (Window C). "
+        "Production code import failed. "
         + "; ".join(_IMPORT_ERRORS)
     )
 
