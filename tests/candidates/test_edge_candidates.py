@@ -78,6 +78,7 @@ EMPTY_WINDOW_RECORD_ID = "e3a2b3c4d5e6f7a8b9c0d1e2f3a4b5c8"
 
 REQUIRED_EDGE_CANDIDATE_FIELDS = frozenset({
     "schema_version",
+    "edge_candidates_schema_version",
     "contract_version",
     "record_id",
     "role",
@@ -90,6 +91,9 @@ REQUIRED_EDGE_CANDIDATE_FIELDS = frozenset({
 })
 
 REQUIRED_POSITIVE_EDGE_FIELDS = frozenset({
+    "ligand_atom_index",
+    "target_atom",
+    "bond_type",
     "target_atom_name",
     "target_atom_element",
     "ligand_atom_name",

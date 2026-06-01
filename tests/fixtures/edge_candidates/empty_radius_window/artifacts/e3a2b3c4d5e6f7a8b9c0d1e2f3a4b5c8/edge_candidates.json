@@ -38,6 +38,7 @@
     "message_passing_candidate_count": 1,
     "natural_candidate_count": 1
   },
+  "edge_candidates_schema_version": "2",
   "empty_radius_window": true,
   "lineage": [
     {
@@ -52,9 +53,23 @@
   ],
   "negative_edges": [],
   "positive_edge": {
+    "bond_type": "single",
     "distance_angstrom": 0.2449,
     "ligand_atom_element": "C",
+    "ligand_atom_index": 0,
     "ligand_atom_name": "C1",
+    "target_atom": {
+      "altloc": null,
+      "asym_id": null,
+      "atom_index": 5,
+      "atom_name": "SG",
+      "atom_serial": 6,
+      "chain_id": "A",
+      "insertion_code": null,
+      "residue_name": "CYS",
+      "residue_number": 42,
+      "structure_model": null
+    },
     "target_atom_element": "S",
     "target_atom_name": "SG"
   },

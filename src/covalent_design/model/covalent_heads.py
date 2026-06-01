@@ -10,6 +10,8 @@ from covalent_design.contracts.types import (
     ModelForwardOutput,
 )
 from covalent_design.model.config import ModelConfig
+from covalent_design.model.edge_message_passing import apply_edge_message_weights
+from covalent_design.model.candidate_builder import StepwiseCandidateBatch
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +104,7 @@ def forward_covalent(
     batch: ModelBatch,
     config: ModelConfig,
     num_families: Optional[int] = None,
+    stepwise_candidate_batch: Optional[StepwiseCandidateBatch] = None,
 ) -> ModelForwardOutput:
     """Produce edge, bond-type, and family logits with detached message weights.
 
@@ -129,7 +132,29 @@ def forward_covalent(
         family_logits, and edge_prob_message_weights.
     """
     B = batch.tensors.protein_coords_shape[0]
-    N_candidates = batch.tensors.edge_candidates_shape[1]
+    if stepwise_candidate_batch is not None:
+        actual_counts = tuple(
+            len(candidate_set.candidates)
+            for candidate_set in stepwise_candidate_batch.candidate_sets
+        )
+        expected_shape = (
+            len(actual_counts),
+            max(actual_counts, default=0),
+        )
+        if (
+            len(actual_counts) != B
+            or stepwise_candidate_batch.candidate_counts != actual_counts
+            or stepwise_candidate_batch.padded_shape != expected_shape
+        ):
+            raise ValueError(
+                "stepwise candidate batch must match the model batch size "
+                "and its padded candidate shape"
+            )
+    N_candidates = (
+        stepwise_candidate_batch.padded_shape[1]
+        if stepwise_candidate_batch is not None
+        else batch.tensors.edge_candidates_shape[1]
+    )
 
     vocab = batch.batch_spec.bond_type_vocabulary
     N_bond_types = len(vocab) if vocab is not None else 2
@@ -167,6 +192,10 @@ def forward_covalent(
     family_logits = _CovalentTensor(family_data, requires_grad=True)
 
     edge_prob_message_weights = edge_logits.sigmoid().detach()
+    edge_prob_message_weights = apply_edge_message_weights(
+        message_weights=edge_prob_message_weights,
+        source=MESSAGE_WEIGHT_SOURCE_DETACHED_EDGE_PROBABILITY,
+    )
 
     return ModelForwardOutput(
         pmdm_outputs=pmdm_output.pmdm_outputs,
@@ -175,5 +204,9 @@ def forward_covalent(
         family_logits=family_logits,
         edge_prob_message_weights=edge_prob_message_weights,
         message_weight_source=MESSAGE_WEIGHT_SOURCE_DETACHED_EDGE_PROBABILITY,
-        denominators_observed=batch.denominators_expected,
+        denominators_observed=(
+            stepwise_candidate_batch.denominators_observed
+            if stepwise_candidate_batch is not None
+            else batch.denominators_expected
+        ),
     )

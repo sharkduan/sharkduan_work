@@ -7,13 +7,16 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from covalent_design.contracts.atom_resolution import (
+    protein_atom_identity_from_table,
+    resolve_protein_atom,
+)
 from covalent_design.contracts.errors import ContractError, ContractErrorInfo
 from covalent_design.contracts.types import (
     CONTRACT_VERSION,
     SCHEMA_VERSION,
     ArtifactRef,
     EdgeDenominators,
-    ProteinAtomIdentity,
 )
 from covalent_design.io.artifacts import resolve_artifact_path, validate_artifact_ref
 from covalent_design.io.jsonl import read_jsonl
@@ -208,17 +211,20 @@ def _inspect_impl(row: dict, line_index: int, root: Path, record_report: dict) -
     protein_count = len(protein_atoms) if isinstance(protein_atoms, list) else 0
     target_atom_index = core_labels.get("target_atom_index", 0)
     target_atom_name = core_labels.get("target_atom_name", "")
-    target_identity = ProteinAtomIdentity(
-        chain_id=protein_data.get("chain_id"),
-        residue_number=protein_data.get("residue_number"),
-        residue_name=protein_data.get("residue_name", ""),
-        atom_name=target_atom_name,
-        atom_serial=_target_atom_serial(
+    try:
+        target_atom = resolve_protein_atom(
             protein_atoms,
-            target_atom_index if isinstance(target_atom_index, int) else -1,
-            target_atom_name if isinstance(target_atom_name, str) else "",
-        ),
-    )
+            target_atom_index=target_atom_index if isinstance(target_atom_index, int) else None,
+            target_atom_name=target_atom_name if isinstance(target_atom_name, str) else "",
+        )
+    except ValueError as exc:
+        raise ContractError(
+            code="MODEL_BATCH_ARTIFACT_UNREADABLE",
+            owner="model",
+            message=f"cannot resolve target atom: {exc}",
+            location=f"line {line_index + 1}",
+        ) from exc
+    target_identity = protein_atom_identity_from_table(protein_data, target_atom)
 
     ligand_data = _read_json_artifact(artifacts["ligand_atom_table"], root)
     ligand_atoms = ligand_data.get("atoms", [])
@@ -227,13 +233,15 @@ def _inspect_impl(row: dict, line_index: int, root: Path, record_report: dict) -
     edge_data = _read_json_artifact(artifacts["edge_candidates"], root)
     denominators_raw = edge_data.get("denominators", {})
     denominators = EdgeDenominators(**denominators_raw) if denominators_raw else None
+    if denominators is not None:
+        denominators.validate()
     candidate_count = denominators.candidate_count if denominators else 0
 
     record_report["provenance"] = {
         "record_id": row_record_id,
         "residue_reaction_family": core_labels.get("residue_reaction_family", ""),
         "quality_tier": quality_tier,
-        "visual_check_status": "pending",
+        "visual_check_status": metadata.get("visual_check_status", "pending"),
         "chemical_state_status": chemical_state_status,
         "target_atom_identity": {
             "chain_id": target_identity.chain_id,

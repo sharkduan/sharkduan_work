@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
+from covalent_design.contracts.atom_resolution import (
+    protein_atom_identity_from_table,
+    protein_atom_identity_to_dict,
+    resolve_protein_atom,
+)
 from covalent_design.contracts.errors import ContractErrorInfo
 from covalent_design.contracts.types import (
     CONTRACT_VERSION,
     SCHEMA_VERSION,
     ArtifactRef,
     ContractEnvelope,
+    EdgeDenominators,
     ValidationReceipt,
 )
 from covalent_design.io import read_jsonl
 from covalent_design.io.artifacts import artifact_ref_from_file, sha256_file
+
+EDGE_CANDIDATES_SCHEMA_VERSION = "2"
 
 
 def _distance(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> float:
@@ -35,18 +44,21 @@ def _build_denominators(
 ) -> dict[str, int]:
     eligible = candidate_count
     masked = 0
-    return {
-        "candidate_count": candidate_count,
-        "natural_candidate_count": natural_candidate_count,
-        "forced_positive_count": forced_positive_count,
-        "eligible_edge_count": eligible,
-        "masked_candidate_count": masked,
-        "edge_loss_denominator": eligible,
-        "bond_type_loss_denominator": eligible,
-        "geometry_loss_denominator": eligible,
-        "message_passing_candidate_count": natural_candidate_count,
-        "gate_evaluated_count": candidate_count,
-    }
+    natural_positive_count = 0 if forced_positive_count else 1
+    denominators = EdgeDenominators(
+        candidate_count=candidate_count,
+        natural_candidate_count=natural_candidate_count,
+        forced_positive_count=forced_positive_count,
+        eligible_edge_count=eligible,
+        masked_candidate_count=masked,
+        edge_loss_denominator=eligible,
+        bond_type_loss_denominator=natural_positive_count,
+        geometry_loss_denominator=natural_positive_count,
+        message_passing_candidate_count=natural_candidate_count,
+        gate_evaluated_count=candidate_count,
+    )
+    denominators.validate()
+    return asdict(denominators)
 
 
 def _process_record(
@@ -60,7 +72,9 @@ def _process_record(
     artifact_list: list[dict[str, Any]] = record.get("artifacts", [])
 
     target_atom_name = core_labels["target_atom_name"]
+    target_atom_index = core_labels.get("target_atom_index")
     positive_ligand_atom_name = core_labels["ligand_atom_name"]
+    positive_ligand_atom_index = core_labels.get("ligand_atom_index")
     positive_ligand_element = core_labels.get("ligand_atom_element", "")
 
     # --- resolve protein_atom_table ---
@@ -102,22 +116,23 @@ def _process_record(
         return None
 
     protein_atoms: list[dict[str, Any]] = protein_data.get("atoms", [])
-    target_atom = None
-    for atom in protein_atoms:
-        if atom.get("name") == target_atom_name:
-            target_atom = atom
-            break
-
-    if target_atom is None:
+    try:
+        target_atom = resolve_protein_atom(
+            protein_atoms,
+            target_atom_index=target_atom_index,
+            target_atom_name=target_atom_name,
+        )
+    except ValueError as exc:
         errors.append(
             ContractErrorInfo(
                 code="PROTEIN_TARGET_ATOM_NOT_FOUND",
                 owner="data",
-                message=f"Record {record_id}: target atom {target_atom_name} not found in protein_atom_table",
+                message=f"Record {record_id}: {exc}",
                 location=record_id,
             )
         )
         return None
+    target_identity = protein_atom_identity_from_table(protein_data, target_atom)
 
     tx = target_atom["x"]
     ty = target_atom["y"]
@@ -165,20 +180,21 @@ def _process_record(
     ligand_atoms: list[dict[str, Any]] = ligand_data.get("atoms", [])
 
     # --- compute distances from target atom to all ligand atoms ---
-    ligand_distances: list[tuple[dict[str, Any], float]] = []
+    ligand_distances: list[tuple[dict[str, Any], int, float]] = []
     positive_atom: Optional[dict[str, Any]] = None
     positive_distance: Optional[float] = None
 
-    for atom in ligand_atoms:
+    for list_index, atom in enumerate(ligand_atoms):
         lx = atom["x"]
         ly = atom["y"]
         lz = atom["z"]
         dist = _distance(tx, ty, tz, lx, ly, lz)
-        if atom["name"] == positive_ligand_atom_name:
+        atom_index = atom.get("index", list_index)
+        if atom_index == positive_ligand_atom_index:
             positive_atom = atom
             positive_distance = dist
         else:
-            ligand_distances.append((atom, dist))
+            ligand_distances.append((atom, atom_index, dist))
 
     if positive_atom is None:
         errors.append(
@@ -192,7 +208,12 @@ def _process_record(
         return None
 
     # --- build positive edge ---
+    target_atom_payload = protein_atom_identity_to_dict(target_identity)
+    target_atom_payload["atom_index"] = target_atom_index
     positive_edge = {
+        "ligand_atom_index": positive_ligand_atom_index,
+        "target_atom": target_atom_payload,
+        "bond_type": core_labels.get("bond_type", ""),
         "target_atom_name": target_atom_name,
         "target_atom_element": target_atom_element,
         "ligand_atom_name": positive_ligand_atom_name,
@@ -204,10 +225,11 @@ def _process_record(
     negative_edges: list[dict[str, Any]] = []
     natural_candidate_count = 1 if positive_distance < radius else 0
 
-    for atom, dist in ligand_distances:
+    for atom, atom_index, dist in ligand_distances:
         if dist < radius:
             negative_edges.append(
                 {
+                    "ligand_atom_index": atom_index,
                     "ligand_atom_name": atom["name"],
                     "ligand_atom_element": atom.get("element", ""),
                     "distance_angstrom": round(dist, 4),
@@ -245,6 +267,7 @@ def _process_record(
 
     return {
         "schema_version": SCHEMA_VERSION,
+        "edge_candidates_schema_version": EDGE_CANDIDATES_SCHEMA_VERSION,
         "contract_version": CONTRACT_VERSION,
         "record_id": record_id,
         "role": "edge_candidates",

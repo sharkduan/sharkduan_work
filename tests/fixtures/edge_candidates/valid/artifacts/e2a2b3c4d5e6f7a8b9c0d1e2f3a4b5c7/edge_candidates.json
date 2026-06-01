@@ -27,17 +27,18 @@
   ],
   "contract_version": "1.0.0",
   "denominators": {
-    "bond_type_loss_denominator": 2,
+    "bond_type_loss_denominator": 1,
     "candidate_count": 2,
     "edge_loss_denominator": 2,
     "eligible_edge_count": 2,
     "forced_positive_count": 0,
     "gate_evaluated_count": 2,
-    "geometry_loss_denominator": 2,
+    "geometry_loss_denominator": 1,
     "masked_candidate_count": 0,
     "message_passing_candidate_count": 2,
     "natural_candidate_count": 2
   },
+  "edge_candidates_schema_version": "2",
   "empty_radius_window": false,
   "lineage": [
     {
@@ -54,13 +55,28 @@
     {
       "distance_angstrom": 2.3452,
       "ligand_atom_element": "C",
+      "ligand_atom_index": 1,
       "ligand_atom_name": "C2"
     }
   ],
   "positive_edge": {
+    "bond_type": "single",
     "distance_angstrom": 0.3464,
     "ligand_atom_element": "C",
+    "ligand_atom_index": 0,
     "ligand_atom_name": "C1",
+    "target_atom": {
+      "altloc": null,
+      "asym_id": null,
+      "atom_index": 5,
+      "atom_name": "SG",
+      "atom_serial": 6,
+      "chain_id": "A",
+      "insertion_code": null,
+      "residue_name": "CYS",
+      "residue_number": 42,
+      "structure_model": null
+    },
     "target_atom_element": "S",
     "target_atom_name": "SG"
   },

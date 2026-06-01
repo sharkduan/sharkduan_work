@@ -644,8 +644,13 @@ class ForcedPositiveDenominatorTests(unittest.TestCase):
             timestep_value=0.5,
         )
         d = result.denominators
-        self.assertEqual(d.bond_type_loss_denominator, d.natural_candidate_count)
-        self.assertEqual(d.geometry_loss_denominator, d.natural_candidate_count)
+        natural_positive_count = sum(
+            1
+            for candidate in result.candidates
+            if candidate.is_positive_label and not candidate.is_forced_positive
+        )
+        self.assertEqual(d.bond_type_loss_denominator, natural_positive_count)
+        self.assertEqual(d.geometry_loss_denominator, natural_positive_count)
 
 
 # ===================================================================

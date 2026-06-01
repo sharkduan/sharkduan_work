@@ -7,6 +7,10 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from covalent_design.contracts.atom_resolution import (
+    protein_atom_identity_from_table,
+    resolve_protein_atom,
+)
 from covalent_design.contracts.errors import ContractError, ContractErrorInfo
 from covalent_design.contracts.types import (
     CONTRACT_VERSION,
@@ -164,8 +168,7 @@ class _ValidatedRecord:
         else:
             self.quality_tier = "Q1"
 
-        # visual_check_status is not in these fixtures  default "pending"
-        self.visual_check_status = "pending"
+        self.visual_check_status = metadata.get("visual_check_status", "pending")
 
         chem_state = metadata.get("chemical_state")
         if isinstance(chem_state, dict):
@@ -390,17 +393,20 @@ def _read_artifact_metadata(validated: list[_ValidatedRecord],
         vr.protein_atom_count = len(atoms)
 
         # Resolve target_atom_identity only after the protein atom table is readable.
-        vr.target_atom_identity = ProteinAtomIdentity(
-            chain_id=prot_data.get("chain_id"),
-            residue_number=prot_data.get("residue_number"),
-            residue_name=prot_data.get("residue_name", ""),
-            atom_name=vr.target_atom_name,
-            atom_serial=_target_atom_serial(
+        try:
+            target_atom = resolve_protein_atom(
                 atoms,
-                vr.target_atom_index,
-                vr.target_atom_name,
-            ),
-        )
+                target_atom_index=vr.target_atom_index,
+                target_atom_name=vr.target_atom_name,
+            )
+        except ValueError as exc:
+            raise _error(
+                "MODEL_BATCH_ARTIFACT_UNREADABLE",
+                f"cannot resolve target atom: {exc}",
+                f"line {vr.line_index + 1}",
+                details={"record_id": vr.record_id},
+            ) from exc
+        vr.target_atom_identity = protein_atom_identity_from_table(prot_data, target_atom)
 
         # ligand atom count
         lig_ref = vr.artifact_refs["ligand_atom_table"]
@@ -439,7 +445,8 @@ def _read_artifact_metadata(validated: list[_ValidatedRecord],
 
         try:
             vr.edge_denominators = EdgeDenominators(**denom_dict)
-        except TypeError as exc:
+            vr.edge_denominators.validate()
+        except (TypeError, ContractError) as exc:
             raise _error("MODEL_BATCH_ARTIFACT_UNREADABLE",
                          f"invalid edge denominators: {exc}",
                          f"line {vr.line_index + 1}",

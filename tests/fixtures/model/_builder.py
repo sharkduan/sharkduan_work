@@ -485,6 +485,7 @@ class ModelBatchFixtureBuilder:
                     "quality_tier": "Q1",
                 },
                 "chemical_state": {"status": "explicit", "protonation": "SG_minus1"},
+                "visual_check_status": "fail",
             },
         }
         return self._write_jsonl("mixed_quality_split", [rec_q2, rec_visual_fail])

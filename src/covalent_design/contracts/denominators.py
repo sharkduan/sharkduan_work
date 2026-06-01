@@ -50,19 +50,19 @@ def validate_edge_denominators(denominators: EdgeDenominators) -> ValidationRece
                 "forced_positive_count",
             )
         )
-    if denominators.eligible_edge_count + denominators.masked_candidate_count > denominators.candidate_count:
+    if denominators.eligible_edge_count + denominators.masked_candidate_count != denominators.candidate_count:
         errors.append(
             _error(
-                "EDGE_DENOMINATOR_ELIGIBLE_MASKED_EXCEEDS_CANDIDATES",
-                "eligible_edge_count + masked_candidate_count cannot exceed candidate_count",
+                "EDGE_DENOMINATOR_ELIGIBLE_MASKED_MISMATCH",
+                "eligible_edge_count + masked_candidate_count must equal candidate_count",
                 "eligible_edge_count",
             )
         )
-    if denominators.edge_loss_denominator > denominators.eligible_edge_count:
+    if denominators.edge_loss_denominator != denominators.eligible_edge_count:
         errors.append(
             _error(
-                "EDGE_DENOMINATOR_EDGE_LOSS_EXCEEDS_ELIGIBLE",
-                "edge_loss_denominator cannot exceed eligible_edge_count",
+                "EDGE_DENOMINATOR_EDGE_LOSS_MISMATCH",
+                "edge_loss_denominator must equal eligible_edge_count",
                 "edge_loss_denominator",
             )
         )
