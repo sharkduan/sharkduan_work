@@ -572,6 +572,7 @@ class TrainingDatasetIndex:
     split_name: str  # "train" | "val" | "test"
     records: tuple[TrainingRecordEntry, ...]
     excluded_summary: ExclusionSummary
+    records_path: str = ""
 
 
 # -- Loss masks & reports (Task 23-24) --
@@ -654,6 +655,7 @@ class LossReport:
                     "residue_reaction_family": s.residue_reaction_family,
                     "timestep_bucket": s.timestep_bucket,
                     "denominators": _denominators_dict(s.denominators),
+                    "mask_audit": _mask_audit_dict(s.mask_audit),
                 }
                 for s in self.strata
             ]
@@ -706,6 +708,29 @@ REQUIRED_LOSS_COMPONENT_KEYS = (
     "covalent_geometry_loss",
     "family_aux_loss",
 )
+
+
+@dataclass(frozen=True)
+class LossWeights:
+    """Frozen Task 24 smoke-weight contract; numeric loss code is later scope."""
+
+    pmdm_position_loss: float = 1.0
+    pmdm_atom_loss: float = 1.0
+    covalent_edge_loss: float = 1.0
+    covalent_bond_type_loss: float = 1.0
+    covalent_geometry_loss: float = 1.0
+    family_aux_loss: float = 1.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "pmdm_position_loss": self.pmdm_position_loss,
+            "pmdm_atom_loss": self.pmdm_atom_loss,
+            "covalent_edge_loss": self.covalent_edge_loss,
+            "covalent_bond_type_loss": self.covalent_bond_type_loss,
+            "covalent_geometry_loss": self.covalent_geometry_loss,
+            "family_aux_loss": self.family_aux_loss,
+        }
+
 
 TRAINING_REQUIRED_INPUT_HASH_KEYS = (
     "records_jsonl",
