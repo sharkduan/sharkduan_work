@@ -41,7 +41,11 @@ Rationale: `inspect_batch` requires artifact-level provenance for debugging, but
 
 ### 2a. Reactive-site / target-atom contract
 
-Task 17 must not leave the reactive site implicit inside atom-table artifacts. `BatchRecordHeader` carries:
+Task 17 must not leave the reactive site implicit inside atom-table artifacts.
+Tasks 12, 17, and 18 use one shared resolver: an explicit index/serial locator
+with identity cross-check is authoritative; unique atom-name fallback exists
+only for legacy artifacts and fails when ambiguous. `BatchRecordHeader`
+carries:
 
 - `target_atom_identity`: the shared `ProteinAtomIdentity` locator, resolved from the `protein_atom_table` artifact (chain_id, residue_number, residue_name) during Phase 2 artifact metadata reading.
 - `target_atom_index`: the row/index into the `protein_atom_table` artifact, sourced from `core_labels.target_atom_index`.
@@ -67,10 +71,15 @@ Rationale: ADR 0033 already established that missing required state must not pas
 
 ### 5. Static vs dynamic edge candidates
 
-- **Static edge candidates** (Task 12, artifact role `"edge_candidates"`): built once from ground-truth coordinates. Provide positive-edge labels, negative-edge labels, and denominator statistics for supervision. Task 17 validates their existence and checksum and records them in ``ModelBatch.static_edge_candidates_refs: Mapping[str, ArtifactRef]`` (a ``record_id → ArtifactRef`` mapping). Per-edge contents (positive label identity, bond type, per-candidate metadata) are consumed later by Task 18, not by ``make_model_batch()`` itself.
+- **Static edge candidates** (Task 12, artifact role `"edge_candidates"`): built once from ground-truth coordinates. Local artifact schema version `"2"` adds `positive_edge.ligand_atom_index`, a full `positive_edge.target_atom` identity with `atom_index`, and `positive_edge.bond_type`, while retaining legacy flat fields for compatibility. These artifacts provide positive-edge labels, negative-edge labels, and denominator statistics for supervision. Task 17 validates their existence and checksum and records them in ``ModelBatch.static_edge_candidates_refs: Mapping[str, ArtifactRef]`` (a ``record_id -> ArtifactRef`` mapping). Per-edge contents are consumed later by Task 18, not by ``make_model_batch()`` itself.
 - **Stepwise candidates** (Task 18, types `StepwiseCandidate` / `StepwiseCandidateSet`): rebuilt at every denoising timestep from current noisy/generated ligand coordinates. Positive label is force-included when noise moves it outside the candidate radius.
 
 These entities MUST NOT share an unqualified type or variable name. Task 12's artifact role name `"edge_candidates"` is unchanged (backward compatible with Tasks 1–16).
+
+Task 18 also exposes package-specific `StepwiseCandidateBatch`, a deterministic
+padded view with strict aggregated denominators. Task 20 consumes this view for
+dynamic candidate shape and message-weight integration. A static shape fallback
+is retained only for Task 19 smoke compatibility.
 
 Rationale: Using static candidates directly as model-forward candidates would create a train/inference skew — training would use ground-truth-coordinate candidates while inference would use generated-coordinate candidates.
 

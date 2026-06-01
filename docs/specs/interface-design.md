@@ -348,10 +348,14 @@ def build_edge_candidates(
     ``<records_dir>/artifacts/<record_id>/edge_candidates.json``.
 
     Each artifact carries ``schema_version``, ``contract_version``,
-    ``record_id``, ``role`` (``"edge_candidates"``), ``lineage``,
-    ``positive_edge``, ``negative_edges``, ``denominators`` (10 fields),
-    ``artifact_refs``, and ``empty_radius_window``.  Zero negatives is a valid
-    ``empty_radius_window``, not a failure.  Missing ``coordinates``,
+    ``edge_candidates_schema_version`` (local value ``"2"``), ``record_id``,
+    ``role`` (``"edge_candidates"``), ``lineage``, ``positive_edge``,
+    ``negative_edges``, ``denominators`` (10 fields), ``artifact_refs``, and
+    ``empty_radius_window``.  The v2 ``positive_edge`` adds
+    ``ligand_atom_index``, a full ``target_atom`` identity with
+    ``atom_index``, and ``bond_type`` while retaining the legacy flat fields
+    for compatibility.  Zero negatives is a valid ``empty_radius_window``,
+    not a failure.  Missing ``coordinates``,
     protein atom-table, or ligand atom-table refs produce structured
     ``ContractErrorInfo`` entries and the envelope returns ``ok=False``.
 
@@ -951,6 +955,7 @@ def forward_covalent(
     batch: "ModelBatch",
     config: "ModelConfig",
     num_families: int | None = None,
+    stepwise_candidate_batch: "StepwiseCandidateBatch | None" = None,
 ) -> "ModelForwardOutput": ...
     """Produce edge, bond-type, and family logits with detached message weights.
 
@@ -969,6 +974,9 @@ def forward_covalent(
     - ``family_logits``: (B, N_families)
     - ``edge_prob_message_weights``: (B, N_candidates) — detached
 
+    ``N_candidates`` comes from ``stepwise_candidate_batch.padded_shape``
+    when the dynamic batch is supplied.  ``None`` remains a Task 19 static
+    smoke-compatibility path only.  Task 24 must pass the dynamic batch.
     ``N_bond_types`` is read from ``BatchSpec.bond_type_vocabulary``;
     ``N_families`` is auto-detected from ``batch.records`` when
     ``num_families=None``.  v1 always includes the family auxiliary head
@@ -1065,9 +1073,10 @@ def build_stepwise_candidates(
 
     Key behaviors:
 
-    * Target atom coordinates are resolved from ``protein_atoms``
-      using ``atom["name"]`` matching the artifact's
-      ``target_atom.atom_name``.
+    * Target atom coordinates are resolved by the shared protein-atom
+      resolver: explicit ``target_atom.atom_index`` plus full identity
+      cross-check first; unique-name fallback only for legacy artifacts.
+      Ambiguous name-only fallback is a hard failure.
     * Natural candidates use strict distance
       ``< candidate_radius_angstrom``.
     * Forced positives increment
@@ -1207,6 +1216,14 @@ class StepwiseCandidateSet:
     positive_label_bond_type: str
     denominators: EdgeDenominators
     empty_radius_window: bool
+
+@dataclass(frozen=True)
+class StepwiseCandidateBatch:
+    """Package-specific deterministic padded dynamic view."""
+    candidate_sets: tuple[StepwiseCandidateSet, ...]
+    candidate_counts: tuple[int, ...]
+    padded_shape: tuple[int, int]
+    denominators_observed: EdgeDenominators
 ```
 
 ### Tensor Shape Conventions
@@ -1232,8 +1249,9 @@ Discovered dynamically by ``make_model_batch()`` from all ``core_labels.bond_typ
 
 ### Static vs Dynamic Edge Candidates
 
-- **Static edge candidates** (Task 12, artifact role `"edge_candidates"`): built once from ground-truth coordinates. Provide positive-edge labels, negative-edge labels, and denominator statistics for supervision. Task 17 validates their existence and checksum and records them in ``ModelBatch.static_edge_candidates_refs`` (a ``record_id → ArtifactRef`` mapping). Task 18 later consumes their per-edge contents (positive label identity, bond type, per-candidate metadata).
+- **Static edge candidates** (Task 12, artifact role `"edge_candidates"`): built once from ground-truth coordinates. Local artifact schema v2 adds ``positive_edge.ligand_atom_index``, full ``positive_edge.target_atom`` identity with ``atom_index``, and ``positive_edge.bond_type`` while retaining legacy flat fields. Task 17 validates existence and checksum and records refs in ``ModelBatch.static_edge_candidates_refs``. Task 18 later consumes per-edge contents.
 - **Stepwise candidates** (Task 18, type `StepwiseCandidateSet`): rebuilt at every denoising timestep from current noisy/generated ligand coordinates. Positive label is force-included when noise moves it outside the candidate radius.
+- **Stepwise candidate batches** (Task 18 package-specific type `StepwiseCandidateBatch`): deterministic padded views used by Task 20 and future Task 24 integration.
 
 These are distinct entities and MUST NOT share an unqualified type or variable name.
 
@@ -1410,29 +1428,101 @@ def prepare_dataset(
     records_path: Path,
     split_index_path: Path,
     split_name: str,                     # "train" | "val" | "test"
-    policy: "TrainingDataPolicy | None",
+    policy: "TrainingDataPolicy | None" = None,
 ) -> ContractEnvelope["TrainingDatasetIndex"]: ...
-    """Build the training dataset index for one split.
+    """Build the training dataset index for exactly one split.
 
-    Excludes records according to policy:
-    1. split != split_name → not in this dataset
-    2. split == "excluded" → hard exclude
-    3. visual_check_status != "pass" && policy.exclude_visual_blocked → exclude
-    4. quality_tier not in accepted set → exclude
-    5. policy.first_core_only && multi-linkage → exclude
-    6. policy.exclude_q2 && quality_tier == "Q2" → exclude
+    Reads ``records.jsonl`` and ``split_index.json``, applies the exclusion
+    priority chain, and returns a ``ContractEnvelope[TrainingDatasetIndex]``.
+
+    Valid ``split_name`` values: ``"train"``, ``"val"``, ``"test"``.
+
+    Exclusion priority chain (first matching reason wins):
+
+    1. assigned split is another core split (``train``/``val``/``test``)
+       and differs from requested split → ``not_in_this_split``
+    2. assigned split is ``"excluded"`` → ``hard_excluded_by_split``
+    3. ``visual_check_status != "pass"`` and
+       ``policy.exclude_visual_blocked=True`` → ``excluded_visual_blocked``
+    4. ``quality_tier`` outside accepted set → ``excluded_quality_tier``
+    5. ``policy.first_core_only=True`` and record is multi-linkage →
+       ``excluded_multi_linkage``
+    6. ``policy.exclude_q2=True`` and ``quality_tier == "Q2"`` → ``excluded_q2``
+    7. missing split assignment → ``missing_split_assignment``
     """
 
 def load_training_batch(
     dataset: "TrainingDatasetIndex",
     batch_id: "BatchId",
-) -> "ModelBatch": ...
+    *,
+    batch_spec: "BatchSpec | None" = None,
+) -> "ContractEnvelope[ModelBatch]": ...
+    """Load one deterministic singleton batch through Task 17.
+
+    ``batch_id`` is ``"batch-<zero-based-index>"`` over the sorted
+    ``TrainingDatasetIndex.records`` tuple.  The loader extracts the selected
+    finalized JSONL row into a temporary same-directory JSONL file, delegates
+    checksum/schema/artifact validation to Task 17 ``make_model_batch()``, and
+    removes the temporary file before returning.
+    """
+
+def resolve_mask_flags(
+    *,
+    pending_smarts: bool = False,
+    pending_geometry: bool = False,
+    missing_required_chemical_state: bool = False,
+    quality_tier: str = "Q1",
+    exclude_q2: bool = False,
+) -> "NormalizedMaskFlags": ...
+    """Own the explicit normalized rule/policy flags consumed by Task 23."""
+
+def compute_mask_audit(
+    candidate_set: "StepwiseCandidateSet",
+    *,
+    pending_smarts: bool = False,
+    pending_geometry: bool = False,
+    missing_required_chemical_state: bool = False,
+    quality_tier: str = "Q1",
+    exclude_q2: bool = False,
+) -> "MaskAudit": ...
+    """Decompose a per-timestep candidate set into mask counts and eligible counts.
+
+    ``missing_required_chemical_state`` is an explicit normalized boolean.
+    This function does NOT resolve rule-table rows. Call ``resolve_mask_flags``
+    at the integration boundary before projecting the flags.
+    """
+
+def build_edge_denominators(mask_audit: "MaskAudit") -> "EdgeDenominators": ...
+    """Project a MaskAudit into the 10-field EdgeDenominators used by losses.
+
+    Calls ``EdgeDenominators.validate()`` before returning; raises
+    ``ContractError`` on negative counts or invalid forced-positive/message-
+    passing combinations.
+    """
+
+def classify_timestep_bucket(timestep_value: float) -> str: ...
+    """Classify a continuous timestep value into ``"early"``, ``"mid"``, or ``"late"``.
+
+    Raises ``ValueError`` for out-of-range or non-finite values.
+    """
+
+def aggregate_denominator_strata(
+    entries: Iterable["DenominatorStratumEntry"],
+) -> tuple["DenominatorsStratum", ...]: ...
+    """Sum per-timestep MaskAudit fields within each (family, bucket) group,
+    derive the corresponding EdgeDenominators projection, and return tuples
+    sorted by family name alphabetically, then early/mid/late within each family.
+    """
 
 def compute_losses(
     output: "ModelForwardOutput",
-    batch: "ModelBatch",
-    weights: "LossWeights",
+    *,
+    model_batch: "ModelBatch",
+    stepwise_candidate_batch: "StepwiseCandidateBatch",
+    mask_flags: "tuple[NormalizedMaskFlags, ...]",
+    weights: "LossWeights" = LossWeights(),
 ) -> "LossReport": ...
+    """Future Task 24 boundary only; not implemented during preflight."""
 
 def train(config: "TrainConfig") -> ContractEnvelope["TrainingRunManifest"]: ...
 
@@ -1450,6 +1540,18 @@ def report_denominators(
 
 ```python
 @dataclass(frozen=True)
+class TrainingDataPolicy:
+    """Per-split inclusion/exclusion policy for training dataset construction.
+
+    Implemented in ``covalent_design.training.dataset`` and exported from
+    ``covalent_design.training``.
+    """
+    first_core_only: bool = True
+    exclude_visual_blocked: bool = True
+    exclude_q2: bool = False
+    accepted_quality_tiers: tuple[str, ...] = ("Q0", "Q1", "Q2")
+
+@dataclass(frozen=True)
 class TrainingRecordEntry:
     record_id: str
     residue_reaction_family: str
@@ -1461,6 +1563,15 @@ class TrainingRecordEntry:
 
 @dataclass(frozen=True)
 class ExclusionSummary:
+    """Count breakdown for one split-specific dataset.
+
+    Equations:
+
+    - ``total_accepted == len(records.jsonl rows)``
+    - ``records_in_split == len(TrainingDatasetIndex.records)``
+    - ``excluded_by_policy == total_accepted - records_in_split``
+    - ``sum(exclusion_reasons.values()) == excluded_by_policy``
+    """
     total_accepted: int
     records_in_split: int
     excluded_by_policy: int
@@ -1472,6 +1583,15 @@ class TrainingDatasetIndex:
     split_name: str
     records: tuple[TrainingRecordEntry, ...]
     excluded_summary: ExclusionSummary
+    records_path: str
+
+@dataclass(frozen=True)
+class NormalizedMaskFlags:
+    pending_smarts: bool = False
+    pending_geometry: bool = False
+    missing_required_chemical_state: bool = False
+    quality_tier: str = "Q1"
+    exclude_q2: bool = False
 
 @dataclass(frozen=True)
 class MaskAudit:
@@ -1500,6 +1620,17 @@ class DenominatorsStratum:
     mask_audit: MaskAudit
 
 @dataclass(frozen=True)
+class DenominatorStratumEntry:
+    """Single-timestep input for strata aggregation.
+
+    Defined in ``covalent_design.training.denominators``, not in contracts.
+    This is a package-specific frozen dataclass, not a cross-package contract type.
+    """
+    residue_reaction_family: str
+    timestep_value: float
+    mask_audit: MaskAudit
+
+@dataclass(frozen=True)
 class LossReport:
     schema_version: str
     contract_version: str
@@ -1509,6 +1640,16 @@ class LossReport:
     denominators: EdgeDenominators | None
     mask_audit: MaskAudit | None
     strata: tuple[DenominatorsStratum, ...]
+
+@dataclass(frozen=True)
+class LossWeights:
+    """Task 24 smoke defaults only; calibration is later workflow scope."""
+    pmdm_position_loss: float = 1.0
+    pmdm_atom_loss: float = 1.0
+    covalent_edge_loss: float = 1.0
+    covalent_bond_type_loss: float = 1.0
+    covalent_geometry_loss: float = 1.0
+    family_aux_loss: float = 1.0
 ```
 
 Required `components` keys (v1, all required):
@@ -1544,6 +1685,107 @@ When both are pending for a candidate:
 - `early`: t ∈ [0.8, 1.0] (high noise)
 - `mid`: t ∈ [0.3, 0.8)
 - `late`: t ∈ [0.0, 0.3) (low noise)
+
+`classify_timestep_bucket()` raises `ValueError` for out-of-range values (t < 0.0 or t > 1.0) and non-finite values (NaN, inf).
+
+### Mask Audit Field Semantics
+
+`resolve_mask_flags()` owns the explicit normalized rule/policy input object.
+`compute_mask_audit()` decomposes one `StepwiseCandidateSet` into the 15-field
+`MaskAudit`; it does NOT resolve rule-table rows.
+
+**Base counts:**
+
+```text
+TC = candidate_count
+NP = natural_positive_count
+FP = forced_positive_count
+NN = natural_negative_count
+TC == NP + FP + NN                    # conservation invariant
+zero_negative_count = 1 iff NN == 0  # valid state, not an error
+```
+
+**Mask reason counts** (independent and may overlap):
+
+```text
+masked_by_pending_smarts              = NP  if pending_smarts else 0
+masked_by_pending_geometry            = NP  if pending_geometry else 0
+masked_by_missing_chemical_state      = NP  if missing_required_chemical_state else 0
+masked_by_q2_exclusion                = TC  if exclude_q2 and quality_tier == "Q2" else 0
+masked_by_forced_positive_exclusion   = FP  (always — forced positives excluded from bond/geometry/message)
+```
+
+**Eligible counts** when Q2 is not excluded:
+
+```text
+edge_loss_eligible_count         = TC
+bond_type_loss_eligible_count    = 0   if pending_smarts else NP
+geometry_loss_eligible_count     = 0   if pending_geometry or missing_required_chemical_state else NP
+message_passing_candidate_count  = NP + NN
+gate_evaluated_count             = TC
+```
+
+When `exclude_q2=True` and `quality_tier == "Q2"`:
+
+```text
+edge_loss_eligible_count = bond_type_loss_eligible_count = geometry_loss_eligible_count
+  = message_passing_candidate_count = gate_evaluated_count = 0
+```
+
+**Participation rules:**
+
+| Candidate type | edge existence | bond type | geometry | message passing | gate |
+| --- | --- | --- | --- | --- | --- |
+| natural positive (NP) | yes | yes (unless pending SMARTS) | yes (unless pending geometry or missing chemical state) | yes | yes |
+| forced positive (FP) | yes | no | no | no | yes |
+| natural negative (NN) | yes (edge existence only) | no | no | yes | yes |
+
+**Pending SMARTS + pending geometry interaction:**
+
+| Condition | edge_loss | bond_type_loss | geometry_loss |
+| --- | --- | --- | --- |
+| neither pending | included | included | included |
+| pending SMARTS only | included | masked | included |
+| pending geometry only | included | included | masked |
+| both pending | included | masked | masked |
+
+### Denominator Projection
+
+`build_edge_denominators()` converts a `MaskAudit` into the 10-field `EdgeDenominators`:
+
+```text
+candidate_count               = TC
+natural_candidate_count       = NP + NN
+forced_positive_count         = FP
+eligible_edge_count           = edge_loss_eligible_count
+masked_candidate_count        = TC - edge_loss_eligible_count
+edge_loss_denominator         = edge_loss_eligible_count
+bond_type_loss_denominator    = bond_type_loss_eligible_count
+geometry_loss_denominator     = geometry_loss_eligible_count
+message_passing_candidate_count = message_passing_candidate_count (from MaskAudit)
+gate_evaluated_count          = gate_evaluated_count (from MaskAudit)
+```
+
+The function calls `EdgeDenominators.validate()` before returning. The loss/message/gate denominator fields copy the matching eligible counts from the `MaskAudit`.
+
+### Strata Aggregation
+
+`aggregate_denominator_strata()` consumes `DenominatorStratumEntry` values and produces sorted `DenominatorsStratum` tuples:
+
+1. Sort entries by `(residue_reaction_family, timestep_bucket)` where `timestep_bucket` is derived via `classify_timestep_bucket()`.
+2. Within each `(family, bucket)` group, sum all 15 `MaskAudit` fields element-wise.
+3. Derive each group's 10-field `EdgeDenominators` via `build_edge_denominators()`.
+4. Sort strata: family name alphabetical ascending, then `"early"`, `"mid"`, `"late"` within each family.
+
+`DenominatorStratumEntry` is a package-specific frozen dataclass in `covalent_design.training.denominators`, not a cross-package contract type.
+
+### Task 23 Scope Boundaries
+
+Task 23 implements masks and denominator reports. It does **not**:
+- Compute numeric losses, run model forward, or run a training loop.
+- Generate checkpoints, run manifests, or training/inference/evaluation artifacts.
+- Resolve rule-table rows — all boolean flags must be resolved upstream.
+- Introduce RDKit or torch dependencies.
 
 ### TrainingRunManifest
 
@@ -1601,14 +1843,17 @@ bond_type_vocabulary: ["no_edge", "carbon-sulfur", ...]
 
 Cross-version compatibility: major version mismatch → hard reject; minor version mismatch → warn but allow.
 
-### CLI
+### Future Training CLI
 
 ```bash
-python -m covalent_design.training.prepare_dataset --records data/processed/covalent_complex_records/records.jsonl --splits <split_index.json> --split train
 python -m covalent_design.training.train --config configs/covalent_train_smoke.yml
 python -m covalent_design.training.validate_epoch --checkpoint outputs/checkpoints/latest.pt --split val
 python -m covalent_design.training.report_denominators --run outputs/runs/<run_id>
 ```
+
+Task 22 dataset preparation currently exposes the Python
+``prepare_dataset(records_path, split_index_path, split_name, policy=None)``
+API. The training CLI commands above are future task boundaries.
 
 ### Artifact Boundary
 
@@ -1627,11 +1872,26 @@ outputs/runs/<run_id>/
 
 ### Misuse Guards
 
-- `TrainingDataPolicy(first_core_only=True)` is the default. Including rejected, conflict, or multi-linkage records raises `DATASET_CONTRACT_VIOLATION`.
+- `TrainingDataPolicy(first_core_only=True)` is the default. Rejected and
+  conflict records must not appear in finalized accepted input; multi-linkage
+  records are excluded with `excluded_multi_linkage`.
 - Q2 keep-with-flag records are eligible only through accepted-core gates and must be stratified in reports.
 - Pending geometry produces zero geometry denominator, not an unbounded geometry loss.
 - Training reports distinguish debug random split from primary protein-cluster and scaffold splits.
 - `LossReport` serialises via `.to_dict()` for JSONL output; `components` keys are validated at construction.
+
+### Task 22 Scope Boundaries
+
+Task 22 is the dataset preparation and batch-loader boundary. It does **not**:
+
+- Compute Task 23 masks or denominators.
+- Compute Task 24 losses.
+- Run model forward or a training loop.
+- Generate model, training, inference, or evaluation artifacts.
+
+``load_training_batch()`` implements deterministic singleton loading and
+delegates validation and construction to Task 17 ``make_model_batch()``. It
+does not duplicate model-batch construction logic.
 
 ## Inference Interfaces
 

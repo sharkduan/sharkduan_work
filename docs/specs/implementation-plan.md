@@ -367,7 +367,8 @@ pytest tests/rules/test_calibration.py -q
 - Every accepted record has exactly one positive edge.
 - Nearby non-attachment ligand atoms within `candidate_radius_angstrom` become no-edge negatives.
 - One per-record external artifact is written at `<records_dir>/artifacts/<record_id>/edge_candidates.json`.
-- Each artifact includes: `schema_version`, `contract_version`, `record_id`, `role` (value `"edge_candidates"`), `lineage`, `positive_edge`, `negative_edges`, `denominators`, `artifact_refs`, and `empty_radius_window`.
+- Each artifact includes: `schema_version`, `contract_version`, local `edge_candidates_schema_version` (value `"2"`), `record_id`, `role` (value `"edge_candidates"`), `lineage`, `positive_edge`, `negative_edges`, `denominators`, `artifact_refs`, and `empty_radius_window`.
+- Local edge-candidate schema v2 adds `positive_edge.ligand_atom_index`, full `positive_edge.target_atom` identity with `atom_index`, and `positive_edge.bond_type`. Legacy flat positive-edge fields remain for compatibility.
 - `denominators` has 10 fields: `candidate_count`, `natural_candidate_count`, `forced_positive_count`, `eligible_edge_count`, `masked_candidate_count`, `edge_loss_denominator`, `bond_type_loss_denominator`, `geometry_loss_denominator`, `message_passing_candidate_count`, `gate_evaluated_count`.
 - Zero negative windows encode `empty_radius_window: true` with an empty `negative_edges` list — this is a valid result, not a failure.
 - Missing `coordinates`, `protein_atom_table`, or `ligand_atom_table` artifact refs produce structured `ContractErrorInfo` entries; the envelope returns `ok=False` and no partial output is written for the affected record.
@@ -637,7 +638,7 @@ def build_stepwise_candidates(
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `protein_atoms` | `list[dict]` | Fixed protein atom dicts. Must contain `"name"`, `"x"`, `"y"`, `"z"`. Target atom coordinates are resolved from this list by matching `"name"` against the artifact's `target_atom.atom_name`. |
+| `protein_atoms` | `list[dict]` | Fixed protein atom dicts. Must contain `"name"`, `"x"`, `"y"`, `"z"`. Shared resolution uses explicit `target_atom.atom_index` plus identity cross-check first; unique-name fallback exists only for legacy artifacts and ambiguous fallback fails. |
 | `ligand_atoms` | `list[dict]` | Current-timestep noisy/generated ligand atom dicts. Must contain `"x"`, `"y"`, `"z"`. The `"index"` key is used when present; otherwise list position is the position-based fallback. |
 | `edge_candidates_artifact` | `dict` | Task 12 static `edge_candidates.json` artifact. Positive label identity is read from `artifact["positive_edge"]` → `ligand_atom_index`, `target_atom`, `bond_type`. |
 | `timestep_index` | `int` | Integer index of the current denoising timestep (passed through to `StepwiseCandidateSet.timestep_index`). |
@@ -670,6 +671,7 @@ def build_stepwise_candidates(
 - Reports `empty_radius_window=True` when zero natural negatives exist. This is a valid state, not a failure.
 - The function is a pure in-memory computation; it creates no artifacts on disk.
 - Deterministic: same inputs always produce identical output.
+- `build_stepwise_candidate_batch(candidate_sets)` builds the deterministic padded dynamic view consumed by Task 20 and future Task 24 integration. It carries `candidate_counts`, `padded_shape`, and strict aggregated `denominators_observed`.
 - Does NOT import RDKit or torch.
 - Task 18 does **not** implement PMDM adapter, covalent heads, message passing, loss masks, final decode, training, inference, or evaluation.
 
@@ -785,10 +787,11 @@ def forward_covalent(
     batch: ModelBatch,
     config: ModelConfig,
     num_families: int | None = None,
+    stepwise_candidate_batch: StepwiseCandidateBatch | None = None,
 ) -> ModelForwardOutput:
 ```
 
-Consumes a Task 19 `ModelForwardOutput` (which carries `SMOKE_PLACEHOLDER` sentinels in its covalent fields) and a `ModelBatch`. Returns a new `ModelForwardOutput` with real pure-Python tensor-like objects (`_CovalentTensor`) replacing the smoke placeholders.
+Consumes a Task 19 `ModelForwardOutput` (which carries `SMOKE_PLACEHOLDER` sentinels in its covalent fields), a `ModelBatch`, and an optional Task 18 `StepwiseCandidateBatch`. Returns a new `ModelForwardOutput` with real pure-Python tensor-like objects (`_CovalentTensor`) replacing the smoke placeholders. Dynamic padded candidate shape is authoritative when supplied; the static fallback remains Task 19 smoke compatibility only.
 
 Task 20 does **not** wrap or reimplement `forward_pmdm()`. It is a separate composition step: `forward_pmdm()` produces the PMDM backbone output with smoke placeholders; `forward_covalent()` consumes that output to fill in the covalent head logits and detached message weights.
 
@@ -804,7 +807,7 @@ Validates the Task 20 message-weight boundary. Accepts only `message_weight_sour
 
 **Acceptance criteria:**
 
-- `forward_covalent` consumes Task 19 `ModelForwardOutput` (with smoke placeholders) plus `ModelBatch` and `ModelConfig`, and returns a new `ModelForwardOutput` with real logits.
+- `forward_covalent` consumes Task 19 `ModelForwardOutput` (with smoke placeholders) plus `ModelBatch`, `ModelConfig`, and optional Task 18 `StepwiseCandidateBatch`, and returns a new `ModelForwardOutput` with real logits. Future Task 24 passes the dynamic batch.
 - Forward output includes `edge_logits` (B, N_candidates), `bond_type_logits` (B, N_candidates, N_bond_types), `family_logits` (B, N_families), `edge_prob_message_weights` (detached, B, N_candidates), `message_weight_source = "detached_edge_probability"`, `denominators_observed`.
 - v1 **includes** family auxiliary head; `family_logits` is a required field, `family_aux_loss` is a required loss component.
 - `N_bond_types` read from `BatchSpec.bond_type_vocabulary`; `N_families` auto-detected from `batch.records` family distribution when `num_families=None`.
@@ -901,23 +904,36 @@ pytest tests/model/test_final_decode.py -q
 
 **Contracts:** `TrainingDatasetIndex`, `TrainingRecordEntry`, `ExclusionSummary` — defined in `covalent_design.contracts.types`.
 
-**Exclusion priority chain:**
-1. `split != split_name` → not in this dataset
-2. `split == "excluded"` → hard exclude
-3. `visual_check_status != "pass" && policy.exclude_visual_blocked` → exclude
-4. `quality_tier` not in accepted set → exclude
-5. `first_core_only && multi-linkage` → exclude
-6. `exclude_q2 && quality_tier == "Q2"` → exclude
+**Exclusion priority chain (first matching reason wins):**
+
+1. assigned split is another core split (`train`/`val`/`test`) and differs from `split_name` → `not_in_this_split`
+2. assigned split is `"excluded"` → `hard_excluded_by_split`
+3. `visual_check_status != "pass"` and `policy.exclude_visual_blocked=True` → `excluded_visual_blocked`
+4. `quality_tier` outside accepted set → `excluded_quality_tier`
+5. `policy.first_core_only=True` and record is multi-linkage → `excluded_multi_linkage`
+6. `policy.exclude_q2=True` and `quality_tier == "Q2"` → `excluded_q2`
+Records without a split assignment are excluded with `missing_split_assignment`
+before policy filtering.
+
+**Default `TrainingDataPolicy`** (implemented in `covalent_design.training.dataset`, exported from `covalent_design.training`):
+
+- `first_core_only=True`
+- `exclude_visual_blocked=True`
+- `exclude_q2=False`
+- `accepted_quality_tiers=("Q0", "Q1", "Q2")`
 
 **Acceptance criteria:**
 
-- `prepare_dataset(records_path, split_index_path, split_name, policy)` returns `ContractEnvelope[TrainingDatasetIndex]`.
-- Default `TrainingDataPolicy(first_core_only=True)` rejects rejected/conflict/multi-linkage records.
+- `prepare_dataset(records_path, split_index_path, split_name, policy=None)` returns `ContractEnvelope[TrainingDatasetIndex]`.
+- Builds exactly one split-specific dataset per call. Valid `split_name` values: `"train"`, `"val"`, `"test"`.
+- Default `TrainingDataPolicy`: Q0/Q1/Q2 accepted, Q2 kept by default (excluded only when `exclude_q2=True`), visual-blocked excluded by default (`exclude_visual_blocked=True`), multi-linkage excluded when `first_core_only=True`.
 - Q2 records: included by default; excluded only when `policy.exclude_q2=True`. Flag preserved in `TrainingRecordEntry.quality_tier`.
-- Visual-blocked records: excluded by default (`exclude_visual_blocked=True`). Flag in `visual_check_status`.
-- Scaffold fallback pending records with `split == "excluded"` → hard excluded.
-- `ExclusionSummary` accounts for every excluded record with reason.
+- Visual statuses other than `"pass"` are excluded when `exclude_visual_blocked=True`.
+- `ExclusionSummary` equations: `total_accepted == len(records.jsonl rows)`, `records_in_split == len(TrainingDatasetIndex.records)`, `excluded_by_policy == total_accepted - records_in_split`, `sum(exclusion_reasons.values()) == excluded_by_policy`.
+- `TrainingRecordEntry` preserves: `record_id`, `residue_reaction_family`, `quality_tier`, `visual_check_status`, `fallback_reason`, `manual_review_status`, and artifact refs by role.
 - `TrainingDatasetIndex` is split-specific (one call per train/val/test).
+- `load_training_batch(dataset, batch_id, *, batch_spec=None)` implements deterministic singleton batches named `batch-<zero-based-index>` over sorted dataset entries. It extracts one finalized row into a temporary same-directory JSONL file, delegates to Task 17 `make_model_batch()`, and removes the temporary file before return.
+- Task 22 does **not** compute Task 23 masks, Task 23 denominators, Task 24 losses, run model forward, run a training loop, or generate model/training/inference/evaluation artifacts.
 
 **Verification:**
 
@@ -937,17 +953,99 @@ pytest tests/training/test_dataset.py -q
 
 **Dependencies:** Tasks 18, 22.
 
-**Contracts:** `MaskAudit` (15 fields), `DenominatorsStratum`. Pending SMARTS + pending geometry interaction rules. Forced-positive loss participation table. See `interface-design.md`.
+**Contracts:** `MaskAudit` (15 fields), `DenominatorsStratum`, `DenominatorStratumEntry` (package-specific). Pending SMARTS + pending geometry interaction rules. Forced-positive loss participation table. See `interface-design.md`.
+
+**Public API:**
+
+```python
+from covalent_design.training.masks import compute_mask_audit
+from covalent_design.training.denominators import (
+    DenominatorStratumEntry,
+    aggregate_denominator_strata,
+    build_edge_denominators,
+    classify_timestep_bucket,
+)
+```
+
+```python
+compute_mask_audit(
+    candidate_set: StepwiseCandidateSet,
+    *,
+    pending_smarts: bool = False,
+    pending_geometry: bool = False,
+    missing_required_chemical_state: bool = False,
+    quality_tier: str = "Q1",
+    exclude_q2: bool = False,
+) -> MaskAudit
+```
+
+`resolve_mask_flags(...) -> NormalizedMaskFlags` owns the explicit normalized
+rule/policy booleans passed into Task 23. `compute_mask_audit()` remains a
+projection and does not resolve rule-table rows.
+
+```python
+build_edge_denominators(mask_audit: MaskAudit) -> EdgeDenominators
+classify_timestep_bucket(timestep_value: float) -> str
+aggregate_denominator_strata(
+    entries: Iterable[DenominatorStratumEntry],
+) -> tuple[DenominatorsStratum, ...]
+```
+
+`DenominatorStratumEntry` is a package-specific frozen dataclass with fields:
+`residue_reaction_family: str`, `timestep_value: float`, `mask_audit: MaskAudit`.
 
 **Acceptance criteria:**
 
-- `MaskAudit` covers: natural positive, forced positive, natural negative, zero negative, masked_by_pending_smarts, masked_by_pending_geometry, masked_by_missing_chemical_state, masked_by_q2_exclusion, masked_by_forced_positive_exclusion, and all five eligible/denominator counts.
-- Forced positive: participates in edge_existence_loss → yes; bond_type_loss → no; geometry_loss → no; message_passing → no; gate_evaluated → yes.
-- Pending SMARTS: masks bond_type_loss and warhead gate; NOT edge_existence_loss or geometry_loss.
-- Pending geometry: masks geometry_loss and geometry gate; NOT edge_existence_loss or bond_type_loss.
-- Both pending: edge_existence_loss unmasked; bond_type and geometry losses both masked.
-- Q2 exclusion only when `policy.exclude_q2=True`.
-- Denominators stratified by `residue_reaction_family` and timestep bucket (`early`/`mid`/`late`).
+**Base counts:**
+- `TC = candidate_count`; `NP = natural_positive_count`; `FP = forced_positive_count`; `NN = natural_negative_count`.
+- `TC == NP + FP + NN` (conservation invariant; raises `ValueError` on violation).
+- `zero_negative_count = 1` iff `NN == 0` (valid state, not an error — `empty_radius_window=True` is valid).
+
+**Mask reason counts** (independent, may overlap):
+- `masked_by_pending_smarts = NP` when `pending_smarts=True`, else 0. Masks bond type target only.
+- `masked_by_pending_geometry = NP` when `pending_geometry=True`, else 0. Masks geometry target only.
+- `masked_by_missing_chemical_state = NP` when `missing_required_chemical_state=True`, else 0. Masks geometry targets for NP.
+- `masked_by_q2_exclusion = TC` when `exclude_q2=True and quality_tier == "Q2"`, else 0. Masks all TC.
+- `masked_by_forced_positive_exclusion = FP` always. Counts forced-positive exclusion.
+
+**Eligible counts when Q2 is not excluded:**
+- `edge_loss_eligible_count = TC`
+- `bond_type_loss_eligible_count = 0` if `pending_smarts` else `NP`
+- `geometry_loss_eligible_count = 0` if `pending_geometry or missing_required_chemical_state` else `NP`
+- `message_passing_candidate_count = NP + NN`
+- `gate_evaluated_count = TC`
+
+**When Q2 is excluded** (`exclude_q2=True` and `quality_tier == "Q2"`): all five eligible counts are 0.
+
+**Participation:**
+- Natural negatives: edge existence and message passing only; never true bond or geometry targets.
+- Forced positives: edge existence and gate evaluation only.
+- Pending SMARTS: masks bond target only.
+- Pending geometry: masks geometry target only; `missing_required_chemical_state` also masks geometry targets.
+- `empty_radius_window=True` is valid, not an error.
+
+**Denominator projection** (`build_edge_denominators`):
+- `candidate_count = TC`; `natural_candidate_count = NP + NN`; `forced_positive_count = FP`.
+- `eligible_edge_count = edge_loss_eligible_count`; `masked_candidate_count = TC - edge_loss_eligible_count`.
+- Loss/message/gate denominator fields copy the matching eligible counts.
+- Calls `EdgeDenominators.validate()` before returning.
+
+**Timestep buckets** (`classify_timestep_bucket`):
+- `early`: t ∈ [0.8, 1.0]; `mid`: t ∈ [0.3, 0.8); `late`: t ∈ [0.0, 0.3).
+- Out-of-range (t < 0.0 or t > 1.0) and non-finite values raise `ValueError`.
+
+**Strata aggregation** (`aggregate_denominator_strata`):
+- Group `DenominatorStratumEntry` entries by `(residue_reaction_family, timestep_bucket)`.
+- Sum all 15 `MaskAudit` fields element-wise within each group.
+- Derive each group's 10-field `EdgeDenominators` via `build_edge_denominators`.
+- Deterministic sort: family alphabetical ascending, then `"early"`, `"mid"`, `"late"`.
+
+**Scope boundaries:**
+- Does NOT compute numeric losses, run model forward, or run a training loop.
+- Does NOT resolve rule-table rows — boolean flags must be resolved upstream.
+- Does NOT introduce RDKit or torch.
+- Does NOT generate checkpoints, run manifests, or training/inference/evaluation artifacts.
+- Does NOT change `LossReport` serialization.
 
 **Verification:**
 
@@ -967,7 +1065,11 @@ pytest tests/training/test_masks_denominators.py -q
 
 **Dependencies:** Tasks 20, 23.
 
-**Contracts:** `LossReport` (with `.to_dict()`), smoke config schema `covalent_train_smoke.yml`. See `interface-design.md`.
+**Contracts:** `LossReport` (with `.to_dict()`), `LossWeights` (six deterministic
+default weights of `1.0`), smoke config schema `covalent_train_smoke.yml`. Future
+`compute_losses()` receives `ModelForwardOutput`, `ModelBatch`,
+`StepwiseCandidateBatch`, normalized mask flags, and `LossWeights`. See
+`interface-design.md`.
 
 **Smoke config** (`configs/covalent_train_smoke.yml`):
 ```yaml

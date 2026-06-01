@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build a PMDM-compatible fixed-protein ligand diffusion extension for de novo covalent inhibitor generation. The model keeps PMDM's pocket-conditioned ligand diffusion backbone and adds explicit reactive-site conditioning, residue-reaction-family conditioning, stepwise soft covalent cross-edge scoring, bond-type scoring, optional family auxiliary diagnostics, and a final hard covalent edge decode interface.
+Build a PMDM-compatible fixed-protein ligand diffusion extension for de novo covalent inhibitor generation. The model keeps PMDM's pocket-conditioned ligand diffusion backbone and adds explicit reactive-site conditioning, residue-reaction-family conditioning, stepwise soft covalent cross-edge scoring, bond-type scoring, the required v1 family auxiliary head, and a final hard covalent edge decode interface.
 
 The model must support a single covalent attachment event and must not rewrite the project as a PocketFlow backbone.
 
@@ -128,6 +128,7 @@ def forward_covalent(
     batch: ModelBatch,
     config: ModelConfig,
     num_families: Optional[int] = None,
+    stepwise_candidate_batch: Optional[StepwiseCandidateBatch] = None,
 ) -> ModelForwardOutput:
 ```
 
@@ -144,7 +145,11 @@ Task 20 does **not** wrap or reimplement `forward_pmdm()`. It is a separate step
 | `family_logits` | `(B, N_families)` |
 | `edge_prob_message_weights` | `(B, N_candidates)` |
 
-`N_bond_types` is read from `BatchSpec.bond_type_vocabulary`; `N_families` is auto-detected from `batch.records` `residue_reaction_family` values when `num_families=None`.
+`N_candidates` comes from `stepwise_candidate_batch.padded_shape` when the
+dynamic view is supplied. `None` is retained only for Task 19 static smoke
+compatibility; Task 24 must supply the dynamic view. `N_bond_types` is read
+from `BatchSpec.bond_type_vocabulary`; `N_families` is auto-detected from
+`batch.records` `residue_reaction_family` values when `num_families=None`.
 
 **v1 family auxiliary head:** `family_logits` is always populated (not optional). `family_aux_loss` is a required `LossReport` component.
 
@@ -244,7 +249,7 @@ Rebuilds covalent edge candidates at a single denoising timestep. The function i
 
 | Input | Role | Constraint |
 | --- | --- | --- |
-| `protein_atoms` | Fixed protein structure | Dicts with `"name"`, `"x"`, `"y"`, `"z"`; target atom coords resolved by matching `"name"` to artifact |
+| `protein_atoms` | Fixed protein structure | Dicts with `"name"`, `"x"`, `"y"`, `"z"`; shared resolver uses explicit artifact `target_atom.atom_index` plus identity cross-check first, then unique-name fallback only for legacy artifacts |
 | `ligand_atoms` | Current-timestep noisy/generated ligand coords | Dicts with `"x"`, `"y"`, `"z"`; `"index"` key used when present |
 | `edge_candidates_artifact` | Task 12 static artifact | `positive_edge` → `ligand_atom_index`, `target_atom`, `bond_type` |
 | `timestep_index` | Metadata passthrough | Stored in `StepwiseCandidateSet.timestep_index` |
@@ -270,13 +275,20 @@ A positive is *natural* when `distance < candidate_radius_angstrom` (`is_forced_
 
 ```text
 candidate_count = natural_candidate_count + forced_positive_count
-natural_candidate_count = count of candidates with within_radius=True
+natural_positive_count = count of positive candidates with within_radius=True
+natural_negative_count = count of no-edge candidates with within_radius=True
+natural_candidate_count = natural_positive_count + natural_negative_count
 forced_positive_count = count of candidates with is_forced_positive=True
 empty_radius_window = (natural_negative_count == 0)
-bond_type_loss_denominator = natural_candidate_count       # forced positives excluded
-geometry_loss_denominator = natural_candidate_count        # forced positives excluded
+bond_type_loss_denominator = natural_positive_count        # negatives and forced positives excluded
+geometry_loss_denominator = natural_positive_count         # negatives and forced positives excluded
 message_passing_candidate_count = natural_candidate_count  # forced positives excluded
 ```
+
+`build_stepwise_candidate_batch(candidate_sets)` creates the deterministic
+padded dynamic candidate view consumed by Task 20 and future Task 24
+integration. It carries per-record counts, padded shape, and strict aggregated
+denominators.
 
 **Boundary:** Task 18 does NOT implement PMDM adapter, covalent heads, message passing, loss masks, final decode, training, inference, or evaluation. Those are Task 19–33 scope.
 
