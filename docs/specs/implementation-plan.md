@@ -807,7 +807,7 @@ Validates the Task 20 message-weight boundary. Accepts only `message_weight_sour
 
 **Acceptance criteria:**
 
-- `forward_covalent` consumes Task 19 `ModelForwardOutput` (with smoke placeholders) plus `ModelBatch`, `ModelConfig`, and optional Task 18 `StepwiseCandidateBatch`, and returns a new `ModelForwardOutput` with real logits. Future Task 24 passes the dynamic batch.
+- `forward_covalent` consumes Task 19 `ModelForwardOutput` (with smoke placeholders) plus `ModelBatch`, `ModelConfig`, and optional Task 18 `StepwiseCandidateBatch`, and returns a new `ModelForwardOutput` with real logits. Task 24 passes the dynamic batch.
 - Forward output includes `edge_logits` (B, N_candidates), `bond_type_logits` (B, N_candidates, N_bond_types), `family_logits` (B, N_families), `edge_prob_message_weights` (detached, B, N_candidates), `message_weight_source = "detached_edge_probability"`, `denominators_observed`.
 - v1 **includes** family auxiliary head; `family_logits` is a required field, `family_aux_loss` is a required loss component.
 - `N_bond_types` read from `BatchSpec.bond_type_vocabulary`; `N_families` auto-detected from `batch.records` family distribution when `num_families=None`.
@@ -1061,49 +1061,116 @@ pytest tests/training/test_masks_denominators.py -q
 
 - `src/covalent_design/training/losses.py`
 - `src/covalent_design/training/train_loop.py`
+- `src/covalent_design/training/train.py`
+- `src/covalent_design/model/forward_smoke.py`
 - `tests/training/test_train_smoke.py`
+- `tests/model/test_forward_smoke.py`
+- `configs/covalent_train_smoke.yml`
+- `configs/covalent_model_smoke.yml`
 
-**Dependencies:** Tasks 20, 23.
+**Dependencies:** Tasks 20, 22, 23.
 
 **Contracts:** `LossReport` (with `.to_dict()`), `LossWeights` (six deterministic
-default weights of `1.0`), smoke config schema `covalent_train_smoke.yml`. Future
-`compute_losses()` receives `ModelForwardOutput`, `ModelBatch`,
-`StepwiseCandidateBatch`, normalized mask flags, and `LossWeights`. See
-`interface-design.md`.
+default weights of `1.0`), smoke config schema `covalent_train_smoke.yml`.
+
+`compute_losses()` signature (implemented):
+
+```python
+def compute_losses(
+    output: ModelForwardOutput,
+    *,
+    model_batch: ModelBatch,
+    stepwise_candidate_batch: StepwiseCandidateBatch,
+    mask_flags: tuple[NormalizedMaskFlags, ...],
+    weights: LossWeights = LossWeights(),
+) -> LossReport:
+```
+
+Keyword-only after `output`. Uses pure-Python pseudo BCE/CE losses
+(`_bce_with_logits`, `_cross_entropy`). `covalent_geometry_loss` is wired as
+an explicit `0.0` sentinel — not a real geometry regression implementation.
+PMDM losses are read from `output.pmdm_outputs["position_loss"]` and
+`output.pmdm_outputs["atom_type_loss"]` as produced by the fake backbone.
 
 **Smoke config** (`configs/covalent_train_smoke.yml`):
+
 ```yaml
-model:
+records_path: tests/fixtures/training/smoke/smoke_records.jsonl
+split_index_path: tests/fixtures/training/smoke/smoke_split_index.json
+split_name: train
+output_dir: outputs/task24-smoke
+steps: 1
+batch_size: 4
+timestep: 0.5
+
+model_config:
+  seed: 7
   fake_backbone: true
-  hidden_dim: 128
-  bond_type_vocabulary: ["no_edge", "carbon-sulfur", "disulfide", ...]
+  ligand_feature_dim: 4
+  protein_feature_dim: 4
+  ligand_pair_feature_dim: 0
+  protein_ligand_pair_feature_dim: 0
+  hidden_dim: 256
   candidate_radius_angstrom: 4.0
-training:
-  seed: 42
-  steps: 1
-  batch_size: 4
-  learning_rate: 1e-4
-  timestep_buckets: [[0.8, 1.0], [0.3, 0.8], [0.0, 0.3]]
-data:
-  records_path: "tests/fixtures/training/smoke/records.jsonl"
-  split_path: "tests/fixtures/training/smoke/splits/split_index.json"
-  split_name: "train"
-output:
-  run_dir: "outputs/runs/smoke-001"
+
+mask_flags:
+  pending_smarts: false
+  pending_geometry: false
+  missing_required_chemical_state: false
+  quality_tier: Q1
+  exclude_q2: false
+
+loss_weights:
+  pmdm_position_loss: 1.0
+  pmdm_atom_loss: 1.0
+  covalent_edge_loss: 1.0
+  covalent_bond_type_loss: 1.0
+  covalent_geometry_loss: 1.0
+  family_aux_loss: 1.0
 ```
+
+**Forward smoke config** (`configs/covalent_model_smoke.yml`):
+
+```yaml
+records_path: tests/fixtures/training/smoke/smoke_records.jsonl
+timestep: 0.5
+model_config:
+  seed: 7
+  fake_backbone: true
+  ligand_feature_dim: 4
+  protein_feature_dim: 4
+  ligand_pair_feature_dim: 0
+  protein_ligand_pair_feature_dim: 0
+  hidden_dim: 256
+  candidate_radius_angstrom: 4.0
+```
+
+**Smoke training loop** (`run_smoke_train` in `train_loop.py`):
+
+Loads four deterministic singleton microbatches (`batch_size=4`, one record
+each via Task 22 `load_training_batch`). Per microbatch: runs
+`forward_pmdm` + `forward_covalent`, builds dynamic stepwise candidates,
+computes losses via `compute_losses()`. Aggregates microbatch `LossReport`s
+into one step-level report via `_aggregate_microbatch_losses()` (averages
+components, sums denominators/mask audits, re-aggregates strata). Writes
+exactly one `train_metrics.jsonl` row.
 
 **Acceptance criteria:**
 
 - `LossReport.components` includes all 6 required keys: `pmdm_position_loss`, `pmdm_atom_loss`, `covalent_edge_loss`, `covalent_bond_type_loss`, `covalent_geometry_loss`, `family_aux_loss` (all v1-required).
-- `LossReport` carries `EdgeDenominators`, `MaskAudit`, and `strata`.
+- `LossReport` carries `EdgeDenominators` (10 fields), `MaskAudit` (15 fields), and `strata` (per-family/timestep with `mask_audit` per stratum).
 - `.to_dict()` produces JSON-compatible dict matching `train_metrics.jsonl` schema.
-- Smoke step completes on CPU with fake backbone (no PMDM, no GPU).
+- Smoke step completes on CPU with fake backbone (no PMDM, no GPU, no torch, no RDKit).
 - Verification checks denominator field presence and non-negativity — NOT loss convergence.
+- `covalent_geometry_loss` is explicit `0.0` sentinel, not a real geometry regression.
+- No optimizer convergence, checkpoint, run manifest (Task 25+), torch, RDKit, real PMDM, or PocketFlow.
 
 **Verification:**
 
 ```bash
 pytest tests/training/test_train_smoke.py -q
+pytest tests/model/test_forward_smoke.py -q
+python -m covalent_design.model.forward_smoke --config configs/covalent_model_smoke.yml
 python -m covalent_design.training.train --config configs/covalent_train_smoke.yml
 ```
 
@@ -1119,18 +1186,34 @@ python -m covalent_design.training.train --config configs/covalent_train_smoke.y
 
 **Dependencies:** Task 24.
 
-**Contracts:** `TrainingRunManifest`, checkpoint manifest YAML schema, hash computation rules (canonical JSON → SHA-256). Cross-version compatibility: major → hard reject; minor → warn.
+**Contracts:** `TrainingRunManifest`, `CheckpointMetadata` frozen dataclass, checkpoint manifest YAML schema, hash computation rules (canonical JSON → SHA-256). Cross-version compatibility: exact → no warning; major → hard reject; minor → warn + load; patch → silent.
 
 **Acceptance criteria:**
 
-- `TrainingRunManifest` stores: run_id, training_config_resolved_hash, input_hashes (records_jsonl, split_index, rule_table, quality_report, visual_check_index, optional release_gate), checkpoint_dir, train/validation_metrics_uri, denominator_report_uri, train_completed, epochs_completed, steps_completed, crash_recovery.
-- Config hash: resolve config → canonical JSON (sorted keys) → SHA-256.
-- Record bundle hash: SHA-256 of `records.jsonl`.
-- Split hash: SHA-256 of `split_index.json`.
-- Rule table hash: canonical JSON of parsed rule table → SHA-256.
-- Quality report and visual check hashes are included as release-gate provenance. They do not make training runtime re-run the Data Release Gate; they bind the checkpoint audit trail to the approved data-release context.
-- Checkpoint manifest YAML: model_contract_version, rule_table_version, input_hashes, model_weights_uri, optimizer_state_uri, bond_type_vocabulary.
-- Checkpoint loader: major version mismatch → reject; minor mismatch → warn + load.
+- **Reports (`reports.py`):**
+  - `canonical_json(value) -> str`: deterministic sorted-key JSON, no trailing whitespace.
+  - `sha256_bytes(value: bytes) -> str`: returns ``sha256:<64 lowercase hex>``.
+  - `sha256_file(path) -> str`: SHA-256 of exact file bytes.
+  - `hash_resolved_config(resolved_config) -> str`: resolved config → canonical JSON (sorted keys) → SHA-256.
+  - `hash_rule_table(path) -> str`: parse YAML → canonical JSON (sorted keys) → SHA-256.
+  - `build_training_input_hashes(...) -> dict`: keyword-only. Required keys: ``records_jsonl``, ``split_index``, ``rule_table``, ``quality_report``, ``visual_check_index``. Optional key: ``release_gate`` (present only when ``release_gate_path`` is given). ``records_jsonl`` and ``split_index`` use exact-byte SHA-256; ``rule_table`` uses parsed-YAML → canonical-JSON → SHA-256; ``quality_report``, ``visual_check_index``, and ``release_gate`` use exact-byte SHA-256.
+  - `build_training_run_manifest(...) -> TrainingRunManifest`: keyword-only. ``training_config_resolved_hash`` is stored separately from ``input_hashes``. Defaults: ``train_completed=False``, ``epochs_completed=0``, ``steps_completed=0``, ``crash_recovery=None``.
+  - `training_run_manifest_to_dict(manifest) -> dict`: JSON-compatible dict with all 14 required keys.
+- **Checkpoints (`checkpoints.py`):**
+  - `CheckpointMetadata`: frozen dataclass with 11 fields (schema_version, contract_version, role, run_id, step, model_contract_version, rule_table_version, input_hashes, model_weights_uri, optimizer_state_uri, bond_type_vocabulary).
+  - `checkpoint_metadata_to_dict(metadata) -> dict`: JSON-compatible dict; ``bond_type_vocabulary`` serialised as a list.
+  - `write_checkpoint_metadata(path, metadata) -> Path`: validates metadata, writes deterministic YAML using project-owned pure-Python subset (sorted keys, no PyYAML dependency for writing). Byte-deterministic across repeated calls.
+  - `read_checkpoint_metadata(path, *, expected_contract_version=CONTRACT_VERSION) -> tuple[CheckpointMetadata, tuple[str, ...]]`: returns (metadata, warnings). Exact version match → no warnings; major mismatch → ContractError (hard reject); minor mismatch → loads with warning; patch difference → silent.
+  - `validate_checkpoint_metadata(metadata, *, expected_contract_version=CONTRACT_VERSION) -> tuple[str, ...]`: empty tuple = valid; minor mismatch returns a warning; major mismatch raises `ContractError`. Checks schema_version, role, run_id, step, bond_type_vocabulary (non-empty, no duplicates, ``no_edge`` at index 0), all 6 required input_hashes keys in ``sha256:<64 lowercase hex>`` format; ``release_gate`` optional.
+- **Cross-cutting:**
+  - Every hash uses uniform ``sha256:<64 lowercase hex>`` format.
+  - ``quality_report`` and ``visual_check_index`` are required exact-byte audit hashes; ``release_gate`` is an optional exact-byte audit hash.
+  - Audit hashes bind provenance only; training metadata code does **not** re-run the Data Release Gate.
+  - Checkpoint URI targets (``model_weights_uri``, ``optimizer_state_uri``) need not exist on disk during metadata validation.
+  - ``bond_type_vocabulary[0]`` must be ``"no_edge"``.
+  - Task 25 writes metadata only — no real ``.pt`` weight contents, optimizer state, resume logic, torch, RDKit, PMDM, PocketFlow, or Task 26 inference.
+  - Task 24 smoke training remains unchanged; Task 25 builders are explicit public APIs and do **not** silently add artifact writes to ``run_smoke_train()``.
+  - Pure Python only; no torch, RDKit, PMDM, or PocketFlow imports.
 
 **Verification:**
 
@@ -1153,57 +1236,103 @@ pytest tests/training/test_run_manifest.py -q
 
 ### Task 26: Implement Request Schema And Validation
 
-**Goal:** Validate `ReactiveSiteGenerationRequest` inputs before any sampling. YAML is authoritative format; JSON accepted. Altloc policy: highest occupancy or `A`.
+**Goal:** Validate `ReactiveSiteGenerationRequest` inputs before any sampling. YAML is authoritative format; JSON accepted. Altloc policy: explicit override > highest occupancy > `A`; single-conformer resolves to `None`. Structure reader is pure Python (PDB/mmCIF atom-level boundary only; no RDKit/torch).
 
 **Files/modules:**
 
-- `src/covalent_design/inference/request_schema.py`
-- `src/covalent_design/inference/request_validation.py`
+- `src/covalent_design/inference/request_schema.py` — `ReactiveSiteGenerationRequest`, `ValidatedRequest`, `ProteinAtomLocator`, `LigandSizeControl`, `ProteinChemicalStateRequest`
+- `src/covalent_design/inference/request_validation.py` — `load_request_file`, `validate_request`, `validate_request_file`, `normalized_request_yaml`, `write_normalized_request`
+- `src/covalent_design/inference/validate_request.py` — CLI entry point
+- `src/covalent_design/io/structure_reader.py` — pure-Python PDB/mmCIF `AtomRecord` parser; preserves `chain_id`, `residue_number`, `residue_name`, `atom_name`, `altloc`, `occupancy`, `insertion_code`, `structure_model`, `asym_id`, `atom_serial`
 - `tests/inference/test_request_validation.py`
 
 **Dependencies:** Tasks 1, 8.
 
+**Public types:**
+- `ReactiveSiteGenerationRequest`: `request_id`, `protein_structure_uri`, `protein_structure_format`, `target_atom_identity_request` (`ProteinAtomLocator`), `residue_reaction_family`, `sample_count`, `size_control` (`LigandSizeControl | None`), `protein_chemical_state_request` (`ProteinChemicalStateRequest | None`), `target_altloc` (`str | None`)
+- `ValidatedRequest`: `request`, `resolved_target_atom_identity` (`ProteinAtomIdentity`), `resolved_target_altloc` (`str | None`), `rule_table_version` (`int`)
+- `LigandSizeControl`: `num_ligand_heavy_atoms` (fixed), `min_ligand_heavy_atoms`/`max_ligand_heavy_atoms` (range), or all `None` (absent)
+
 **Acceptance criteria:**
 
-- Request file format: YAML (`.yml`/`.yaml`) authoritative, JSON (`.json`) accepted. Auto-detected by extension.
-- All 13 `REQUEST_*` error codes covered by fixtures.
-- Ligand size control: fixed (`num_ligand_heavy_atoms`), range (`min_`/`max_`), or absent. Conflicting forms → `REQUEST_LIGAND_SIZE_CONFLICT`.
+- Request file format: YAML (`.yml`/`.yaml`) authoritative, JSON (`.json`) accepted. Auto-detected by extension. Unknown extension and malformed content both → `REQUEST_STRUCTURE_UNREADABLE`.
+- All 13 `REQUEST_*` error codes covered by fixtures. No 14th code.
+- Ligand size control: fixed (`num_ligand_heavy_atoms`), range (`min_`/`max_`), or absent. Conflicting forms → `REQUEST_LIGAND_SIZE_CONFLICT`. Non-integer values → deterministic error codes.
 - Missing required chemical state → `REQUEST_REQUIRED_CHEMICAL_STATE_UNAVAILABLE`.
-- `target_altloc` optional field; when absent → select highest occupancy or `A`.
+- `target_altloc` optional field; explicit override wins over occupancy; when absent → select highest occupancy or `A`; single-conformer → `None`.
 - Resolved altloc recorded in `ValidatedRequest.resolved_target_altloc`.
-- Normalised request written as `request.normalized.yml` at generation start.
+- `ValidatedRequest` carries `rule_table_version` from the loaded rule table.
+- `write_normalized_request()` produces deterministic UTF-8 YAML; callable by Task 27, not an implicit side effect of Task 26 validation.
+- Task 26 does not write generation, checkpoint, sampling, or normalized artifacts.
+- Structure reader is pure Python; no RDKit, no torch.
+- CLI: `python -m covalent_design.inference.validate_request --request <path> [--rules <path>]`. Default rule table: `data/rules/reaction_family_rule_table.yml`.
+- Request validation failure is a request contract error (`ContractError(owner="request")`), not an invalid generated sample.
+- Task 27 is implemented.
 
 **Verification:**
 
 ```bash
 pytest tests/inference/test_request_validation.py -q
 python -m covalent_design.inference.validate_request --request request.yml
+python -m covalent_design.inference.validate_request --request request.yml --rules data/rules/reaction_family_rule_table.yml
 ```
 
 ### Task 27: Implement Generation Run Manifest And Sampling Failure Accounting
 
-**Goal:** Return `GenerationRunManifest`, separate sampling system failures from results, count at sample_id granularity.
+**Goal:** Return `GenerationRunManifest`, separate sampling system failures from results, count at sample_id granularity. Inject all heavy boundaries.
 
 **Files/modules:**
 
-- `src/covalent_design/inference/run_manifest.py`
-- `src/covalent_design/inference/sampler.py`
+- `src/covalent_design/inference/run_manifest.py` (implemented)
+- `src/covalent_design/inference/sampler.py` (implemented)
 - `tests/inference/test_sampling_failures.py`
 
 **Dependencies:** Task 26.
 
-**Contracts:** `GenerationRunManifest`, `SamplingSystemFailure` — defined in `covalent_design.contracts.types`. Retry policy: sample_id granularity, retries do not change denominator.
+**Contracts:** `GenerationRunManifest`, `SamplingSystemFailure`, `SamplingPolicy` — defined in `covalent_design.contracts.types`. Retry policy: sample_id granularity, retries do not change denominator.
+
+**Public API:**
+
+```python
+@dataclass(frozen=True)
+class SamplingPolicy:
+    max_retries: int
+    retry_on_categories: tuple[str, ...]
+
+def generate(
+    request: ValidatedRequest,
+    policy: SamplingPolicy,
+    *,
+    output_dir: Path,
+    job_id: str,
+    sampler,
+    result_sink,
+    checkpoint_ref: ArtifactRef | None = None,
+    checkpoint_loader = None,
+    clock = None,
+    traceback_normalizer = None,
+) -> ContractEnvelope[GenerationRunManifest]:
+```
 
 **Acceptance criteria:**
 
 - `generate()` returns `ContractEnvelope[GenerationRunManifest]`, not `list[CovalentGenerationResult]`.
-- `GenerationRunManifest` includes: job_id, checkpoint_ref, accepted_request_sample_count, attempted_sample_count, sampling_system_failure_count, result_count, artifacts.
-- `SamplingSystemFailure` includes: request_id, sample_id, failure_category (6 values), failure_timestamp, traceback_hash, log_uri, retry_count, resource_snapshot, message.
+- `SamplingPolicy` requires both fields explicitly: `max_retries: int` and `retry_on_categories: tuple[str, ...]`. Retry defaults remain deliberately unfrozen.
+- `SamplingSystemFailure` is a frozen 9-field dataclass: `request_id`, `sample_id`, `failure_category`, `failure_timestamp`, `traceback_hash`, `log_uri`, `retry_count`, `resource_snapshot`, `message`.
+- Failure categories are exactly: `crash`, `oom`, `timeout`, `retry_exhausted`, `checkpoint_load_failed`, `sampler_invariant_violation`.
+- `retry_exhausted` is an emitted terminal sentinel and cannot be configured as a retry trigger.
+- `GenerationRunManifest` includes: `schema_version`, `contract_version`, `role`, `job_id`, `request_id`, `checkpoint_ref` (`ArtifactRef | None`), `accepted_request_sample_count`, `attempted_sample_count`, `sampling_system_failure_count`, `result_count`, `artifacts` (keys: `request`, `results`, `sampling_system_failures`).
+- Artifact refs use relative URIs and exact-byte SHA-256 with `format`, `schema_version`, `role`, and `bytes` fields.
+- `checkpoint_ref` uses `ArtifactRef | None` — no separate `CheckpointRef` type.
 - `accepted_request_sample_count = attempted_sample_count + sampling_system_failure_count`.
-- `attempted_sample_count` is per sample_id, not per attempt. Retries are internal.
+- `attempted_sample_count` is per sample_id, not per attempt. Retries are internal and do not change the denominator.
 - `sampling_system_failure_count` is deduplicated by sample_id (only fully-failed samples).
-- Each crash writes one row to `sampling_system_failures.jsonl` (retry_count = 0, 1, ...); final exhausted writes final row.
-- Sampling failures and results are sibling artifacts so evaluation can enforce reconciliation.
+- Every intermediate failure attempt row remains in `sampling_system_failures.jsonl` (with `retry_count` = 0, 1, ...). A fully exhausted sample adds an extra `retry_exhausted` terminal sentinel row, but `sampling_system_failure_count` counts that failed sample once.
+- `checkpoint_load_failed` rows are emitted per accepted sample id.
+- `result_sink` is wired to `ResultWriter.write()` through `generate(result_sink=writer.write)`.
+- `sampler`, `checkpoint_loader`, `clock`, and `traceback_normalizer` are injectable boundaries. No real PMDM, PocketFlow, torch, RDKit, Task 29 export, or Task 30 evaluation implementation.
+- Generation writes `request.normalized.yml` before checkpoint loading and creates this sibling layout: `request.normalized.yml`, `run_manifest.yml`, `results.jsonl`, `sampling_system_failures.jsonl`, `logs/`.
+- No standalone CLI for Task 27. `generate()` is a Python API called from orchestration code.
 
 **Verification:**
 
@@ -1211,28 +1340,47 @@ python -m covalent_design.inference.validate_request --request request.yml
 pytest tests/inference/test_sampling_failures.py -q
 ```
 
-### Task 28: Implement Generation Result Writer
+### Task 28: Implement Generation Result Writer (implemented)
 
 **Goal:** Write one complete `CovalentGenerationResult` row per attempted sample with lifecycle validation. Pure Python API — no independent CLI.
 
 **Files/modules:**
 
-- `src/covalent_design/inference/result_schema.py`
-- `src/covalent_design/inference/result_writer.py`
+- `src/covalent_design/inference/result_schema.py` (implemented)
+- `src/covalent_design/inference/result_writer.py` (implemented)
 - `tests/inference/test_result_writer.py`
 
 **Dependencies:** Tasks 21, 27.
 
-**Contracts:** Full `CovalentGenerationResult` (~30 fields) defined in `covalent_design.contracts.types`.
+**Contracts:** Full `CovalentGenerationResult` (~22 fields) defined in `covalent_design.contracts.types`.
+
+**Public API:**
+
+```python
+from covalent_design.inference.result_writer import ResultWriter
+
+writer = ResultWriter()
+row = writer.write(result)  # dict[str, object]
+```
 
 **Acceptance criteria:**
 
+- `ResultWriter` is a stateless, reusable class importable from `covalent_design.inference.result_writer`.
+- `write()` accepts a `CovalentGenerationResult` and returns `dict[str, object]`.
+- Reuses `from covalent_design.contracts import validate_generation_result` for lifecycle validation.
+- Contract-corrupt sampler output raises the first structured `ContractError` (with code, owner, message, location, and details) and is not silently converted to an invalid sample or sampling-system failure.
+- Internally consistent invalid generated samples are retained as rows with diagnostics preserved.
+- Writer rows contain every `CovalentGenerationResult` domain field as deterministic JSON-compatible values.
+- Nested dataclasses become dictionaries, tuples become lists, and artifact mapping keys are stable.
+- Writer rows intentionally exclude top-level `schema_version` and `contract_version`; Task 27 `write_jsonl()` injects them in `results.jsonl`.
+- Task 27 integration is `generate(..., result_sink=writer.write)`.
 - One result row per attempted sample.
 - Valid samples: `generation_validity_status = "valid"`, ligand/edge/geometry/warhead fields populated.
 - Invalid samples: `primary_failure_reason` set, `secondary_failure_reasons` with all observed failures, ligand files preserved if parseable.
 - Lifecycle constraints enforced at write time (e.g., invalid → export = not_applicable).
 - Request validation errors never create result rows.
 - Result writer is called inside `generate()` loop; no standalone CLI.
+- Does not implement Task 29 mmCIF writer/export, real docking, Task 30 evaluation, or heavy dependencies.
 
 **Verification:**
 
@@ -1240,27 +1388,59 @@ pytest tests/inference/test_sampling_failures.py -q
 pytest tests/inference/test_result_writer.py -q
 ```
 
-### Task 29: Implement mmCIF-First Export Interface
+### Task 29: Implement mmCIF-First Export Interface (implemented)
 
-**Goal:** Export valid covalent complexes as mmCIF through the project-owned writer or adapter boundary.
+**Goal:** Export valid covalent complexes as mmCIF through the project-owned pure-Python writer and immutable export adapters.
 
 **Files/modules:**
 
-- `src/covalent_design/io/mmcif_writer.py`
-- `src/covalent_design/inference/complex_export.py`
-- `tests/inference/test_complex_export.py`
+- `src/covalent_design/io/mmcif_writer.py` (implemented)
+- `src/covalent_design/inference/complex_export.py` (implemented)
+- `tests/inference/test_complex_export.py` (implemented)
 
 **Dependencies:** Task 28.
 
-**Writer:** project-owned mmCIF writer or adapter boundary. RDKit may be enabled later as an optional backend only after the exact API is source-verified; default CI uses fixture/project-owned writer tests and does not require RDKit. Source-verification status (2026-05-27): the official RDKit `rdkit.Chem.rdmolfiles` API reference (`https://rdkit.org/docs/source/rdkit.Chem.rdmolfiles.html`) was checked for an mmCIF writer and no v1 backend API is frozen from that source.
+**Writer:** project-owned pure-Python mmCIF writer, deterministic UTF-8 LF bytes. RDKit may be enabled later as an optional backend only after the exact API is source-verified; default CI uses the project-owned writer and does not require RDKit. Source-verification status (2026-06-02): the official RDKit `rdkit.Chem.rdmolfiles` API reference (`https://rdkit.org/docs/source/rdkit.Chem.rdmolfiles.html`) was re-checked and no `MolToMMCIFBlock` symbol was found. RDKit remains an optional future backend requiring source verification.
 
-**Acceptance criteria:**
+**Implemented API:**
 
-- `write_covalent_complex(result, protein_atom_table, ligand_coords, ligand_atom_types, ligand_bonds, covalent_edge, out_path) → ArtifactRef`.
-- Exports `_atom_site.*` for protein + ligand, `_struct_conn` with `covale` type, `_entry.id`.
-- Returns `ArtifactRef` with sha256 of written file.
-- Export failure → `ContractError(code="COMPLEX_EXPORT_FAILED")` → `complex_export_status = "failed"`.
-- PDB export (LINK/CONECT) is optional compatibility output only.
+```python
+def write_covalent_complex(
+    result: CovalentGenerationResult,
+    protein_atom_table: ArtifactRef,
+    ligand_coords: object,
+    ligand_atom_types: object,
+    ligand_bonds: object,
+    covalent_edge: CovalentEdge,
+    out_path: Path,
+    *,
+    artifact_root: Path,
+) -> ArtifactRef:
+    ...
+
+def export_covalent_complex_result(...) -> CovalentGenerationResult:
+    ...
+
+def adapt_complex_export_failure(
+    result: CovalentGenerationResult,
+) -> CovalentGenerationResult:
+    ...
+```
+
+**Acceptance criteria (implemented):**
+
+- Project-owned pure-Python writer, deterministic UTF-8 LF bytes.
+- Input protein table is ``ArtifactRef`` JSON with explicit keyword-only ``artifact_root``; no cwd guessing.
+- Input and output paths reject absolute, traversing, and root-escaping boundaries.
+- Writes ``_entry.id``, ``_atom_site.*`` (protein ``ATOM`` + ligand ``HETATM``), and exactly one ``_struct_conn.*`` row with ``conn_type_id = covale``.
+- Ligand identity is deterministic: element-local names (``C1``, ``C2``, ``N1``), ``label_asym_id=L``, ``label_seq_id=1``, ``label_comp_id=LIG``, entity id ``2``.
+- Output ``ArtifactRef`` is ``role=complex_mmcif``, ``format=mmcif`` with root-relative URI, exact bytes, and sha256.
+- Success adapter ``export_covalent_complex_result``: immutable ``dataclasses.replace()``; sets exported / eligible / not_run and adds ``complex_mmcif``.
+- Failure adapter ``adapt_complex_export_failure``: preserves generation-valid diagnostics; sets failed / not_applicable / not_applicable and ``COMPLEX_EXPORT_FAILED``.
+- Writer validation/read/write errors raise ``ContractError(code=COMPLEX_EXPORT_FAILED, owner=inference)``.
+- Export failure is not a sampling-system failure.
+- No RDKit, torch, PMDM, PocketFlow, docking, or Task 30 behavior.
+- PDB compatibility output is optional future compatibility output only - not implemented.
 
 **Verification:**
 
@@ -1274,32 +1454,76 @@ pytest tests/inference/test_complex_export.py -q
 
 **Files/modules:**
 
-- `src/covalent_design/evaluation/denominator_accounting.py`
-- `src/covalent_design/evaluation/result_schema.py`
+- `src/covalent_design/evaluation/__init__.py`
+- `src/covalent_design/evaluation/denominator_accounting.py` — core API: `load_generation_run`, `summarize_results`, `check_denominators`, `evaluation_summary_to_dict`, `write_evaluation_summary`
+- `src/covalent_design/evaluation/result_schema.py` — `decode_result_row()` for JSONL-to-`CovalentGenerationResult`
+- `src/covalent_design/evaluation/summarize_results.py` — CLI entry point
+- `src/covalent_design/evaluation/check_denominators.py` — CLI entry point
 - `tests/evaluation/test_denominator_accounting.py`
 
 **Dependencies:** Tasks 27, 28.
+
+**Public API:**
+
+```python
+def load_generation_run(manifest: Path) -> ContractEnvelope[GenerationRunManifest]: ...
+    """Parse and validate a generation-run manifest YAML.
+    Validates the three mandatory checksum-validated artifact refs:
+    request, results, sampling_system_failures. Only relative URIs accepted."""
+
+def summarize_results(manifest: Path) -> EvaluationSummary: ...
+    """Load a generation run and compute its EvaluationSummary.
+    No write side effect. Every result row decoded and validated through
+    validate_generation_result(). sampling_system_failure_count from manifest
+    is authoritative — row count of sampling_system_failures.jsonl is not
+    a denominator."""
+
+def check_denominators(summary: EvaluationSummary) -> ValidationReceipt: ...
+    """Validate the six EvaluationSummary conservation equations."""
+
+def evaluation_summary_to_dict(summary: EvaluationSummary) -> dict[str, object]: ...
+    """Serialize an EvaluationSummary to a deterministic JSON-compatible dict."""
+
+def write_evaluation_summary(summary: EvaluationSummary, path: Path) -> ArtifactRef: ...
+    """Write an EvaluationSummary atomically. Returns an ArtifactRef for the
+    written file with role=evaluation_summary, format=json."""
+```
 
 **CLI:** Manifest-first:
 
 ```bash
 python -m covalent_design.evaluation.summarize_results \
     --manifest outputs/generation/<job_id>/run_manifest.yml
+python -m covalent_design.evaluation.check_denominators \
+    --manifest outputs/generation/<job_id>/run_manifest.yml
 ```
+
+The `summarize_results` CLI writes `evaluation_summary.json` to the manifest parent directory and prints the summary as deterministic JSON to stdout. `check_denominators` prints the validation receipt to stdout without writing files.
 
 **Acceptance criteria:**
 
-- `summarize_results(manifest)` reads manifest → loads results and failures by checksum-validated paths → computes `EvaluationSummary`.
-- MUST NOT infer counts from files on disk.
-- All 6 conservation equations enforced.
-- Invalid samples retained in validity and failure-mode denominators.
+- `load_generation_run(manifest)` parses and validates the manifest with checksum-validated artifact refs for exactly `request`, `results`, and `sampling_system_failures`. Missing any mandatory key is a hard error.
+- Only relative artifact URIs accepted; absolute paths and traversal outside the manifest parent are rejected.
+- `summarize_results(manifest)` reads manifest → loads results and failures by checksum-validated paths → decodes and validates every result row → computes `EvaluationSummary`. Has no write side effect.
+- `check_denominators(summary)` delegates to `validate_evaluation_summary()` in `contracts.denominators`.
+- `evaluation_summary_to_dict(summary)` produces a deterministic JSON-compatible dict with role `"evaluation_summary"`.
+- `write_evaluation_summary(summary, path)` writes atomically via same-directory temp-file rename; returns an `ArtifactRef`.
+- All 6 conservation equations enforced (centralized in `validate_evaluation_summary()`).
+- `sampling_system_failure_count` read from manifest, not from `sampling_system_failures.jsonl` row count.
+- `sampling_system_failures.jsonl` rows are schema-validated as `SamplingSystemFailure` audit evidence.
+- For one manifest, `request_validation_error_sample_count = 0` and `requested_sample_count = accepted_request_sample_count`.
+- `attempted_sample_count` and `result_count` must match the number of rows in `results.jsonl` (hard error on mismatch).
+- Counts must not be inferred from files on disk.
+- Invalid samples retained in validity denominators.
 - Task 30 output: `evaluation_summary.json` (global, no strata).
-- Stratified reports → Task 33.
+- Stratified reports → Task 33. Failure-mode reports → Task 31. Docking protocol → Task 32.
 
 **Verification:**
 
 ```bash
 pytest tests/evaluation/test_denominator_accounting.py -q
+python -m covalent_design.evaluation.summarize_results --manifest <run_manifest.yml>
+python -m covalent_design.evaluation.check_denominators --manifest <run_manifest.yml>
 ```
 
 ### Task 31: Implement Lifecycle Validation And Failure Mode Reports
@@ -1382,7 +1606,7 @@ pytest tests/evaluation/test_split_reports.py -q
 
 **Proof of completion:**
 - All 13 request validation error fixtures pass
-- `SamplingSystemFailure` fixtures: crash, OOM, timeout, retry_exhausted
+- `SamplingSystemFailure` fixtures: crash, OOM, timeout, retry_exhausted, checkpoint_load_failed, sampler_invariant_violation (all 6 categories)
 - Valid and invalid `CovalentGenerationResult` fixtures with complete diagnostics
 - mmCIF export valid + export-failure fixtures through the project-owned writer/adapter boundary
 - Evaluation denominator equations pass on golden summaries

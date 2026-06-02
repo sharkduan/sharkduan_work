@@ -23,7 +23,7 @@ pytest tests/model/test_batch.py -q
 python -m compileall -q scripts src
 ```
 
-`forward_smoke` and `export_arch_summary` CLIs are deferred to Task 24; Task 19 `forward_pmdm` has no standalone CLI — it is called from tests.
+`forward_smoke` CLI is implemented in Task 24; Task 19 `forward_pmdm` has no standalone CLI — it is called from tests and from `forward_smoke`.
 
 ## Project Structure
 

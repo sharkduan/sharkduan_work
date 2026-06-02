@@ -9,14 +9,19 @@ Training must expose mask and denominator behavior rather than hiding missing ru
 ## Tech Stack
 
 - Python 3.9-compatible project-owned training wrappers.
-- PyTorch training loops and checkpointing.
+- Pure Python deterministic losses and smoke training loop (Task 24). No PyTorch, torch, RDKit, PMDM, or PocketFlow dependency for smoke path.
+- PyTorch training loops and checkpointing (Task 25+).
 - PMDM configuration patterns where practical.
 - Lightweight CI remains compile/hygiene focused; training smoke tests use small fixtures.
 
 ## Commands
 
 ```bash
-# Task 22 currently exposes a Python API:
+# Task 24 implemented smoke CLIs:
+python -m covalent_design.model.forward_smoke --config configs/covalent_model_smoke.yml
+python -m covalent_design.training.train --config configs/covalent_train_smoke.yml
+
+# Task 22 Python API:
 # prepare_dataset(records_path, split_index_path, split_name, policy=None)
 python -m covalent_design.training.train --config configs/covalent_train_smoke.yml
 python -m covalent_design.training.validate_epoch --checkpoint outputs/checkpoints/latest.pt --split val
@@ -183,18 +188,21 @@ Participation: natural negatives → edge existence + message passing only (neve
 
 ## Open Questions
 
-Resolved (2026-05-26 contract freeze, see ADR 0035, ADR 0036):
+Resolved (2026-05-26 contract freeze, see ADR 0035, ADR 0036; Task 24 implementation 2026-06-01; Task 25 implementation 2026-06-01):
 
 - **Loss components:** All 6 components required in v1 (pmdm_position_loss, pmdm_atom_loss, covalent_edge_loss, covalent_bond_type_loss, covalent_geometry_loss, family_aux_loss). family_aux_loss is NOT optional.
 - **Forced-positive participation:** edge_existence_loss yes; bond_type_loss no; geometry_loss no; message_passing no; gate yes. See `interface-design.md` Forced-Positive Loss Participation table.
 - **Pending SMARTS + geometry interaction:** edge_existence_loss unaffected; bond_type masked by SMARTS; geometry masked by geometry. See `interface-design.md` Pending Interaction.
 - **Timestep buckets:** `early` [0.8, 1.0], `mid` [0.3, 0.8), `late` [0.0, 0.3).
-- **Smoke training config:** `covalent_train_smoke.yml` with `fake_backbone: true`, `steps: 1`, `batch_size: 4`. See `implementation-plan.md` Task 24.
-- **Loss weights smoke defaults:** `LossWeights` freezes all six v1 component
-  weights to `1.0` for Task 24 smoke integration. Calibration remains later
-  workflow work.
-- **Hash computation:** Config → canonical JSON → SHA-256; Record bundle → SHA-256 of records.jsonl; Split → SHA-256 of split_index.json. See ADR 0035.
+- **Smoke training config:** `covalent_train_smoke.yml` with flat YAML structure: `records_path`, `split_index_path`, `split_name`, `output_dir`, `steps: 1`, `batch_size: 4`, `timestep: 0.5`, `model_config` (seed, fake_backbone, dims), `mask_flags` (pending_smarts, pending_geometry, missing_required_chemical_state, quality_tier, exclude_q2), `loss_weights` (all six at 1.0). See `implementation-plan.md` Task 24 and committed `configs/covalent_train_smoke.yml`.
+- **`compute_losses()` API:** Keyword-only after `output`: `model_batch`, `stepwise_candidate_batch`, `mask_flags`, `weights=LossWeights()`. Pure-Python pseudo BCE/CE losses. No torch dependency.
+- **`covalent_geometry_loss` smoke wiring:** Explicit `0.0` sentinel — not a real geometry regression implementation. PMDM losses read from `output.pmdm_outputs`.
+- **Singleton microbatch aggregation:** Task 24 smoke step loads `batch_size=4` deterministic singleton microbatches via Task 22 `load_training_batch`. Per-microbatch forward + loss; aggregated into one step-level `LossReport` by averaging components and summing denominators/audits/strata.
+- **Loss weights smoke defaults:** `LossWeights` freezes all six v1 component weights to `1.0` for Task 24 smoke integration. Calibration remains later workflow work.
+- **Hash computation:** Every hash uses uniform ``sha256:<64 lowercase hex>`` format. Config → canonical JSON (sorted keys) → SHA-256. Record bundle → SHA-256 of ``records.jsonl`` exact bytes. Split → SHA-256 of ``split_index.json`` exact bytes. Rule table → parsed YAML → canonical JSON (sorted keys) → SHA-256. ``quality_report`` and ``visual_check_index`` are required exact-byte audit hashes; ``release_gate`` is an optional exact-byte audit hash. Audit hashes bind provenance only; training metadata code does **not** re-run the Data Release Gate. See ADR 0035 and ``interface-design.md``.
 - **Message-weight leakage:** Runtime `requires_grad` check in `ModelForwardOutput.__post_init__`, plus Task 20 provenance tests proving message weights come from detached model predictions rather than labels. See ADR 0036.
+- **No optimizer convergence, checkpoint, or run manifest:** These are Task 25+ scope. Task 24 does not implement optimizer steps, checkpoint metadata, training run manifests, or torch/RDKit/PMDM/PocketFlow imports.
+- **Checkpoint metadata and run manifest (Task 25):** ``CheckpointMetadata`` frozen dataclass (11 fields with ``no_edge`` at vocabulary index 0). ``write_checkpoint_metadata`` writes deterministic YAML via project-owned pure-Python subset (no PyYAML dependency for writing). ``read_checkpoint_metadata`` returns ``(metadata, warnings)`` with version-gated compatibility: exact match → no warnings, major mismatch → hard reject, minor mismatch → warn + load, patch difference → silent. Checkpoint URI targets need not exist during metadata validation. ``build_training_run_manifest`` and ``build_training_input_hashes`` are keyword-only explicit public APIs; they do **not** silently add artifact writes to ``run_smoke_train()``. Task 25 writes metadata only — no real ``.pt`` weight contents, optimizer state, resume logic, torch, RDKit, PMDM, PocketFlow, or Task 26 inference.
 
 Still open for v1:
 
