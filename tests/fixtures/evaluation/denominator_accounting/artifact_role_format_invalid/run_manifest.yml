@@ -1,0 +1,32 @@
+schema_version: "1"
+contract_version: "1.0.0"
+role: "generation_run_manifest"
+job_id: "artifact_role_format_invalid"
+request_id: "eval-test-req"
+checkpoint_ref: null
+accepted_request_sample_count: 1
+attempted_sample_count: 1
+sampling_system_failure_count: 0
+result_count: 1
+artifacts:
+  request:
+    uri: "request.normalized.yml"
+    sha256: "55da5fcb0562d7cbff86a8ad165d71f88d7a012fc7cb4c6233960fe5e6a457a2"
+    format: "yml"
+    schema_version: "1"
+    role: "request"
+    bytes: 90
+  results:
+    uri: "results.jsonl"
+    sha256: "f0dc07f5972126ef0eaa68493335375aa4ffeae707183c4d3f7ea7ba47476608"
+    format: "jsonl"
+    schema_version: "1"
+    role: "wrong_results_role"
+    bytes: 2016
+  sampling_system_failures:
+    uri: "sampling_system_failures.jsonl"
+    sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    format: "wrong_format"
+    schema_version: "1"
+    role: "sampling_system_failures"
+    bytes: 0

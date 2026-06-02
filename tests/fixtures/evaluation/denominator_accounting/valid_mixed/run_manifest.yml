@@ -1,0 +1,32 @@
+schema_version: "1"
+contract_version: "1.0.0"
+role: "generation_run_manifest"
+job_id: "valid_mixed"
+request_id: "eval-test-req"
+checkpoint_ref: null
+accepted_request_sample_count: 9
+attempted_sample_count: 7
+sampling_system_failure_count: 2
+result_count: 7
+artifacts:
+  request:
+    uri: "request.normalized.yml"
+    sha256: "55da5fcb0562d7cbff86a8ad165d71f88d7a012fc7cb4c6233960fe5e6a457a2"
+    format: "yml"
+    schema_version: "1"
+    role: "request"
+    bytes: 90
+  results:
+    uri: "results.jsonl"
+    sha256: "ae76b6b6a2c9a29eff22ebcc6ea0d026550ad3a35ad638995b8a8e4d91477dd7"
+    format: "jsonl"
+    schema_version: "1"
+    role: "results"
+    bytes: 11009
+  sampling_system_failures:
+    uri: "sampling_system_failures.jsonl"
+    sha256: "b6d1c69e691b7d99fd5f094ad9cd72bd9f2af0be03a22196e54c8ae7a75d3a3a"
+    format: "jsonl"
+    schema_version: "1"
+    role: "sampling_system_failures"
+    bytes: 704
