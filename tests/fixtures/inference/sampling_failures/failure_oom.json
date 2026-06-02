@@ -1,0 +1,11 @@
+{
+  "request_id": "test-request-001",
+  "sample_id": 1,
+  "failure_category": "oom",
+  "failure_timestamp": "2026-06-02T00:00:01.000000Z",
+  "traceback_hash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+  "log_uri": "logs/oom_sample_1_attempt_0.log",
+  "retry_count": 0,
+  "resource_snapshot": {"rss_mb": 32768, "gpu_memory_mb": 24576},
+  "message": "CUDA out of memory"
+}

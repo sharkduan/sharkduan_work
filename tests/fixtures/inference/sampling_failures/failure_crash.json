@@ -1,0 +1,11 @@
+{
+  "request_id": "test-request-001",
+  "sample_id": 0,
+  "failure_category": "crash",
+  "failure_timestamp": "2026-06-02T00:00:00.000000Z",
+  "traceback_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "log_uri": "logs/crash_sample_0_attempt_0.log",
+  "retry_count": 0,
+  "resource_snapshot": {"rss_mb": 1024, "gpu_memory_mb": 0},
+  "message": "Process terminated with SIGSEGV"
+}

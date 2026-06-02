@@ -1,0 +1,17 @@
+request_id: "valid-altloc-override"
+protein_structure_uri: "structures/altloc_multi.pdb"
+protein_structure_format: "pdb"
+target_atom_identity_request:
+  chain_id: "A"
+  residue_number: 42
+  residue_name: "CYS"
+  atom_name: "SG"
+residue_reaction_family: "CYS_MICHAEL_ADDITION"
+sample_count: 5
+target_altloc: "B"
+size_control:
+  num_ligand_heavy_atoms: 20
+protein_chemical_state_request:
+  target_atom_formal_charge: 0
+  target_atom_protonation_state: "thiolate"
+  target_atom_hydrogen_state: "absent"

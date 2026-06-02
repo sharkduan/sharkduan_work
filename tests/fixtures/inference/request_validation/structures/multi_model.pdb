@@ -1,0 +1,7 @@
+MODEL        1
+ATOM      6  SG  CYS A  42      14.123   5.432   6.001  1.00  0.00           S
+ENDMDL
+MODEL        2
+ATOM     12  SG  CYS A  42      14.123   5.432   6.001  1.00  0.00           S
+ENDMDL
+END

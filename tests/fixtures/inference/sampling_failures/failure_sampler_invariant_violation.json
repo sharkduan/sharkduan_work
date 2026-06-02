@@ -1,0 +1,11 @@
+{
+  "request_id": "test-request-001",
+  "sample_id": 0,
+  "failure_category": "sampler_invariant_violation",
+  "failure_timestamp": "2026-06-02T00:00:00.500000Z",
+  "traceback_hash": "f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1",
+  "log_uri": "logs/invariant_violation_sample_0.log",
+  "retry_count": 0,
+  "resource_snapshot": {"rss_mb": 4096, "gpu_memory_mb": 2048},
+  "message": "PMDM sampler invariant violated: NaN in ligand coordinates at t=0.3"
+}

@@ -1,10 +1,15 @@
 * text=auto
 
+.gitattributes text eol=lf
 *.md text eol=lf
 *.py text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.toml text eol=lf
 *.json text eol=lf
+*.jsonl text eol=lf
 *.csv text eol=lf
+*.mmcif text eol=lf
+*.pdb text eol=lf
+*.cif text eol=lf
 *.sh text eol=lf

@@ -1,0 +1,43 @@
+{
+  "request_id": "task28-invalid-required-state-unavailable",
+  "sample_id": 16,
+  "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+  "target_atom_identity": {
+    "chain_id": "A",
+    "residue_number": 145,
+    "residue_name": "CYS",
+    "atom_name": "SG",
+    "altloc": null,
+    "insertion_code": null,
+    "structure_model": 1,
+    "asym_id": "A",
+    "atom_serial": 1234
+  },
+  "generation_validity_status": "invalid",
+  "complex_export_status": "not_applicable",
+  "docking_eligibility_status": "not_applicable",
+  "docking_run_status": "not_applicable",
+  "primary_failure_reason": "REQUIRED_GATE_STATE_UNAVAILABLE",
+  "secondary_failure_reasons": [],
+  "generated_ligand_status": "absent",
+  "predicted_ligand_attachment_atom": null,
+  "predicted_covalent_edge": null,
+  "covalent_edge_score": null,
+  "geometry_metrics": null,
+  "molecular_quality_metrics": null,
+  "matched_warhead_type": null,
+  "predicted_warhead_type": null,
+  "covalent_docking_score": null,
+  "noncovalent_vina_score": null,
+  "edge_validity_checks": [
+    {
+      "check_name": "protonation",
+      "status": "not_evaluable",
+      "observed_value": "unknown",
+      "threshold_or_rule": "requires_explicit_protonation_state",
+      "rule_table_version": "1.0.0",
+      "failure_code": "REQUIRED_GATE_STATE_UNAVAILABLE"
+    }
+  ],
+  "artifacts": {}
+}

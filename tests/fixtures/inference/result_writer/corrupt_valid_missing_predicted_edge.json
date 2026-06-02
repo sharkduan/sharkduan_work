@@ -1,0 +1,68 @@
+{
+  "request_id": "task28-corrupt-missing-predicted-edge",
+  "sample_id": 23,
+  "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+  "target_atom_identity": {
+    "chain_id": "A",
+    "residue_number": 145,
+    "residue_name": "CYS",
+    "atom_name": "SG",
+    "altloc": null,
+    "insertion_code": null,
+    "structure_model": 1,
+    "asym_id": "A",
+    "atom_serial": 1234
+  },
+  "generation_validity_status": "valid",
+  "complex_export_status": "exported",
+  "docking_eligibility_status": "eligible",
+  "docking_run_status": "not_run",
+  "primary_failure_reason": null,
+  "secondary_failure_reasons": [],
+  "generated_ligand_status": "present",
+  "predicted_ligand_attachment_atom": {
+    "ligand_id": "LIG023",
+    "atom_name": "C1",
+    "atom_index": 0,
+    "chain_id": null,
+    "asym_id": null,
+    "residue_number": null,
+    "altloc": null
+  },
+  "predicted_covalent_edge": null,
+  "covalent_edge_score": 0.75,
+  "geometry_metrics": {
+    "bond_length": 1.8,
+    "protein_side_angle": 108.0,
+    "ligand_side_angle": 115.0
+  },
+  "molecular_quality_metrics": {
+    "qed": 0.6,
+    "sa_score": 3.0,
+    "log_p": 2.0,
+    "molecular_weight": 300.0
+  },
+  "matched_warhead_type": "acrylamide",
+  "predicted_warhead_type": null,
+  "covalent_docking_score": null,
+  "noncovalent_vina_score": null,
+  "edge_validity_checks": [],
+  "artifacts": {
+    "ligand_sdf": {
+      "uri": "sample_23_ligand.sdf",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "format": "sdf",
+      "schema_version": "1",
+      "role": "ligand_sdf",
+      "bytes": 2048
+    },
+    "complex_mmcif": {
+      "uri": "sample_23_complex.mmcif",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333334",
+      "format": "mmcif",
+      "schema_version": "1",
+      "role": "complex_mmcif",
+      "bytes": 16384
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "atoms": [
+    {
+      "chain_id": "A",
+      "residue_number": 145,
+      "residue_name": "CYS",
+      "atom_name": "CA",
+      "element": "C",
+      "x": 10.123,
+      "y": 20.456,
+      "z": 30.789,
+      "asym_id": "A",
+      "atom_serial": 1230
+    },
+    {
+      "chain_id": "A",
+      "residue_number": 145,
+      "residue_name": "CYS",
+      "atom_name": "CB",
+      "element": "C",
+      "x": 11.234,
+      "y": 21.345,
+      "z": 31.456,
+      "asym_id": "A",
+      "atom_serial": 1231
+    },
+    {
+      "chain_id": "A",
+      "residue_number": 145,
+      "residue_name": "CYS",
+      "atom_name": "N",
+      "element": "N",
+      "x": 9.567,
+      "y": 19.678,
+      "z": 29.789,
+      "asym_id": "A",
+      "atom_serial": 1232
+    }
+  ]
+}

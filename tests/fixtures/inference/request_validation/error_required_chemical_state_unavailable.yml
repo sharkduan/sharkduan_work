@@ -1,0 +1,12 @@
+request_id: "error-missing-required-chemical-state"
+protein_structure_uri: "structures/valid_structure.pdb"
+protein_structure_format: "pdb"
+target_atom_identity_request:
+  chain_id: "A"
+  residue_number: 42
+  residue_name: "CYS"
+  atom_name: "SG"
+residue_reaction_family: "CYS_MICHAEL_ADDITION"
+sample_count: 10
+size_control:
+  num_ligand_heavy_atoms: 25

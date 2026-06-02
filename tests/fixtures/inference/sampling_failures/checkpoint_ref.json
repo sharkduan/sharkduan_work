@@ -1,0 +1,8 @@
+{
+  "uri": "checkpoints/model_step_1000.pt",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "format": "pt",
+  "schema_version": "1",
+  "role": "checkpoint",
+  "bytes": 12345678
+}

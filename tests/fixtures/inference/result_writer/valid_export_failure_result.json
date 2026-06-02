@@ -1,0 +1,91 @@
+{
+  "request_id": "task28-valid-export-failure",
+  "sample_id": 3,
+  "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+  "target_atom_identity": {
+    "chain_id": "A",
+    "residue_number": 300,
+    "residue_name": "CYS",
+    "atom_name": "SG",
+    "altloc": null,
+    "insertion_code": "A",
+    "structure_model": 1,
+    "asym_id": "A",
+    "atom_serial": 3456
+  },
+  "generation_validity_status": "valid",
+  "complex_export_status": "failed",
+  "docking_eligibility_status": "not_applicable",
+  "docking_run_status": "not_applicable",
+  "primary_failure_reason": "COMPLEX_EXPORT_FAILED",
+  "secondary_failure_reasons": [],
+  "generated_ligand_status": "present",
+  "predicted_ligand_attachment_atom": {
+    "ligand_id": "LIG004",
+    "atom_name": "C4",
+    "atom_index": 3,
+    "chain_id": null,
+    "asym_id": null,
+    "residue_number": null,
+    "altloc": null
+  },
+  "predicted_covalent_edge": {
+    "protein_atom": {
+      "chain_id": "A",
+      "residue_number": 300,
+      "residue_name": "CYS",
+      "atom_name": "SG",
+      "altloc": null,
+      "insertion_code": "A",
+      "structure_model": 1,
+      "asym_id": "A",
+      "atom_serial": 3456
+    },
+    "ligand_atom": {
+      "ligand_id": "LIG004",
+      "atom_name": "C4",
+      "atom_index": 3,
+      "chain_id": null,
+      "asym_id": null,
+      "residue_number": null,
+      "altloc": null
+    },
+    "bond_type": "carbon-sulfur"
+  },
+  "covalent_edge_score": 0.91,
+  "geometry_metrics": {
+    "bond_length": 1.85,
+    "protein_side_angle": 112.0,
+    "ligand_side_angle": 122.0
+  },
+  "molecular_quality_metrics": {
+    "qed": 0.7,
+    "sa_score": 2.9,
+    "log_p": 3.0,
+    "molecular_weight": 380.0
+  },
+  "matched_warhead_type": "acrylamide",
+  "predicted_warhead_type": null,
+  "covalent_docking_score": null,
+  "noncovalent_vina_score": null,
+  "edge_validity_checks": [
+    {
+      "check_name": "target_atom",
+      "status": "pass",
+      "observed_value": "SG",
+      "threshold_or_rule": "CYS:SG",
+      "rule_table_version": "1.0.0",
+      "failure_code": null
+    }
+  ],
+  "artifacts": {
+    "ligand_sdf": {
+      "uri": "sample_3_ligand.sdf",
+      "sha256": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1",
+      "format": "sdf",
+      "schema_version": "1",
+      "role": "ligand_sdf",
+      "bytes": 2560
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "request_id": "test-request-001",
+  "sample_id": 2,
+  "failure_category": "timeout",
+  "failure_timestamp": "2026-06-02T00:00:02.000000Z",
+  "traceback_hash": "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+  "log_uri": "logs/timeout_sample_2_attempt_0.log",
+  "retry_count": 0,
+  "resource_snapshot": {"rss_mb": 8192, "gpu_memory_mb": 4096},
+  "message": "Sampling timed out after 300 seconds"
+}

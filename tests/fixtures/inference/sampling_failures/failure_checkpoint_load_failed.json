@@ -1,0 +1,11 @@
+{
+  "request_id": "test-request-001",
+  "sample_id": 0,
+  "failure_category": "checkpoint_load_failed",
+  "failure_timestamp": "2026-06-02T00:00:00.000000Z",
+  "traceback_hash": "e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6",
+  "log_uri": "logs/checkpoint_load_failed.log",
+  "retry_count": 0,
+  "resource_snapshot": null,
+  "message": "Checkpoint model_step_1000.pt failed to load: checksum mismatch"
+}

@@ -1,0 +1,115 @@
+{
+  "request_id": "task28-valid-docking-succeeded",
+  "sample_id": 2,
+  "residue_reaction_family": "LYS_IMINE_FORMATION",
+  "target_atom_identity": {
+    "chain_id": "A",
+    "residue_number": 42,
+    "residue_name": "LYS",
+    "atom_name": "NZ",
+    "altloc": "A",
+    "insertion_code": null,
+    "structure_model": 1,
+    "asym_id": "A",
+    "atom_serial": 999
+  },
+  "generation_validity_status": "valid",
+  "complex_export_status": "exported",
+  "docking_eligibility_status": "eligible",
+  "docking_run_status": "succeeded",
+  "primary_failure_reason": null,
+  "secondary_failure_reasons": [],
+  "generated_ligand_status": "present",
+  "predicted_ligand_attachment_atom": {
+    "ligand_id": "LIG003",
+    "atom_name": "C3",
+    "atom_index": 2,
+    "chain_id": null,
+    "asym_id": null,
+    "residue_number": null,
+    "altloc": null
+  },
+  "predicted_covalent_edge": {
+    "protein_atom": {
+      "chain_id": "A",
+      "residue_number": 42,
+      "residue_name": "LYS",
+      "atom_name": "NZ",
+      "altloc": "A",
+      "insertion_code": null,
+      "structure_model": 1,
+      "asym_id": "A",
+      "atom_serial": 999
+    },
+    "ligand_atom": {
+      "ligand_id": "LIG003",
+      "atom_name": "C3",
+      "atom_index": 2,
+      "chain_id": null,
+      "asym_id": null,
+      "residue_number": null,
+      "altloc": null
+    },
+    "bond_type": "carbon-nitrogen"
+  },
+  "covalent_edge_score": 0.92,
+  "geometry_metrics": {
+    "bond_length": 1.47,
+    "protein_side_angle": 111.0,
+    "ligand_side_angle": 118.0
+  },
+  "molecular_quality_metrics": {
+    "qed": 0.58,
+    "sa_score": 3.5,
+    "log_p": 0.9,
+    "molecular_weight": 420.0
+  },
+  "matched_warhead_type": "aldehyde",
+  "predicted_warhead_type": "aldehyde",
+  "covalent_docking_score": -9.2,
+  "noncovalent_vina_score": null,
+  "edge_validity_checks": [
+    {
+      "check_name": "target_atom",
+      "status": "pass",
+      "observed_value": "NZ",
+      "threshold_or_rule": "LYS:NZ",
+      "rule_table_version": "1.0.0",
+      "failure_code": null
+    },
+    {
+      "check_name": "geometry",
+      "status": "pass",
+      "observed_value": "1.47_111.0_118.0",
+      "threshold_or_rule": "bond:1.3-1.6_prot_angle:100-125_lig_angle:110-130",
+      "rule_table_version": "1.0.0",
+      "failure_code": null
+    }
+  ],
+  "artifacts": {
+    "ligand_sdf": {
+      "uri": "sample_2_ligand.sdf",
+      "sha256": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc1",
+      "format": "sdf",
+      "schema_version": "1",
+      "role": "ligand_sdf",
+      "bytes": 3072
+    },
+    "complex_mmcif": {
+      "uri": "sample_2_complex.mmcif",
+      "sha256": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc2",
+      "format": "mmcif",
+      "schema_version": "1",
+      "role": "complex_mmcif",
+      "bytes": 24576
+    },
+    "complex_pdb": {
+      "uri": "sample_2_complex.pdb",
+      "sha256": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3",
+      "format": "pdb",
+      "schema_version": "1",
+      "role": "complex_pdb",
+      "bytes": 12288
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "request_id": "task28-invalid-valence",
+  "sample_id": 14,
+  "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+  "target_atom_identity": {
+    "chain_id": "A",
+    "residue_number": 145,
+    "residue_name": "CYS",
+    "atom_name": "SG",
+    "altloc": null,
+    "insertion_code": null,
+    "structure_model": 1,
+    "asym_id": "A",
+    "atom_serial": 1234
+  },
+  "generation_validity_status": "invalid",
+  "complex_export_status": "not_applicable",
+  "docking_eligibility_status": "not_applicable",
+  "docking_run_status": "not_applicable",
+  "primary_failure_reason": "VALENCE_CHECK_FAIL",
+  "secondary_failure_reasons": [],
+  "generated_ligand_status": "present",
+  "predicted_ligand_attachment_atom": {
+    "ligand_id": "LIG014",
+    "atom_name": "C2",
+    "atom_index": 1,
+    "chain_id": null,
+    "asym_id": null,
+    "residue_number": null,
+    "altloc": null
+  },
+  "predicted_covalent_edge": {
+    "protein_atom": {
+      "chain_id": "A",
+      "residue_number": 145,
+      "residue_name": "CYS",
+      "atom_name": "SG",
+      "altloc": null,
+      "insertion_code": null,
+      "structure_model": 1,
+      "asym_id": "A",
+      "atom_serial": 1234
+    },
+    "ligand_atom": {
+      "ligand_id": "LIG014",
+      "atom_name": "C2",
+      "atom_index": 1,
+      "chain_id": null,
+      "asym_id": null,
+      "residue_number": null,
+      "altloc": null
+    },
+    "bond_type": "carbon-sulfur"
+  },
+  "covalent_edge_score": 0.78,
+  "geometry_metrics": {
+    "bond_length": 2.1,
+    "protein_side_angle": 107.0,
+    "ligand_side_angle": 113.0
+  },
+  "molecular_quality_metrics": {
+    "qed": 0.6,
+    "sa_score": 3.0,
+    "log_p": 2.0,
+    "molecular_weight": 320.0
+  },
+  "matched_warhead_type": "acrylamide",
+  "predicted_warhead_type": "acrylamide",
+  "covalent_docking_score": null,
+  "noncovalent_vina_score": null,
+  "edge_validity_checks": [
+    {
+      "check_name": "valence",
+      "status": "fail",
+      "observed_value": "5",
+      "threshold_or_rule": "4",
+      "rule_table_version": "1.0.0",
+      "failure_code": "VALENCE_CHECK_FAIL"
+    }
+  ],
+  "artifacts": {}
+}

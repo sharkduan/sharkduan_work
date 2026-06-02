@@ -1,0 +1,21 @@
+{
+  "request_id": "valid-request-001",
+  "protein_structure_uri": "structures/valid_structure.pdb",
+  "protein_structure_format": "pdb",
+  "target_atom_identity_request": {
+    "chain_id": "A",
+    "residue_number": 42,
+    "residue_name": "CYS",
+    "atom_name": "SG"
+  },
+  "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+  "sample_count": 10,
+  "size_control": {
+    "num_ligand_heavy_atoms": 25
+  },
+  "protein_chemical_state_request": {
+    "target_atom_formal_charge": 0,
+    "target_atom_protonation_state": "thiolate",
+    "target_atom_hydrogen_state": "absent"
+  }
+}

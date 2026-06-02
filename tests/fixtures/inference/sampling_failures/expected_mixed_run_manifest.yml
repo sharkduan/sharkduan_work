@@ -1,0 +1,38 @@
+schema_version: "1"
+contract_version: "1.0.0"
+role: "generation_run_manifest"
+job_id: "test-job-mixed"
+request_id: "test-request-001"
+checkpoint_ref:
+  uri: "checkpoints/model_step_1000.pt"
+  sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  format: "pt"
+  schema_version: "1"
+  role: "checkpoint"
+  bytes: 12345678
+accepted_request_sample_count: 3
+attempted_sample_count: 2
+sampling_system_failure_count: 1
+result_count: 2
+artifacts:
+  request:
+    uri: "request.normalized.yml"
+    sha256: "2a1e9fd5ef6fe48f67a845f02c9bbe782f161b56b065efefdd96bae05d3bc79f"
+    format: "yml"
+    schema_version: "1"
+    role: "request"
+    bytes: 1051
+  results:
+    uri: "results.jsonl"
+    sha256: "61fee138dbe4689905027828d117e54158d89ad849e563b2ce1e215404d57f56"
+    format: "jsonl"
+    schema_version: "1"
+    role: "results"
+    bytes: 156
+  sampling_system_failures:
+    uri: "sampling_system_failures.jsonl"
+    sha256: "74ddbf88a2a079431961439af279ade55d30152bef7ad513c686546de5504bf0"
+    format: "jsonl"
+    schema_version: "1"
+    role: "sampling_system_failures"
+    bytes: 375
