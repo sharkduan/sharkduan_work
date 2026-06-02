@@ -1,0 +1,35 @@
+# covalent_train_smoke.yml — Task 24 smoke training config
+# steps=1, batch_size=4 with deterministic singleton microbatch aggregation.
+
+records_path: tests/fixtures/training/smoke/smoke_records.jsonl
+split_index_path: tests/fixtures/training/smoke/smoke_split_index.json
+split_name: train
+output_dir: outputs/task24-smoke
+steps: 1
+batch_size: 4
+timestep: 0.5
+
+model_config:
+  seed: 7
+  fake_backbone: true
+  ligand_feature_dim: 4
+  protein_feature_dim: 4
+  ligand_pair_feature_dim: 0
+  protein_ligand_pair_feature_dim: 0
+  hidden_dim: 256
+  candidate_radius_angstrom: 4.0
+
+mask_flags:
+  pending_smarts: false
+  pending_geometry: false
+  missing_required_chemical_state: false
+  quality_tier: Q1
+  exclude_q2: false
+
+loss_weights:
+  pmdm_position_loss: 1.0
+  pmdm_atom_loss: 1.0
+  covalent_edge_loss: 1.0
+  covalent_bond_type_loss: 1.0
+  covalent_geometry_loss: 1.0
+  family_aux_loss: 1.0

@@ -1,0 +1,54 @@
+# Fixture rule table for hash tests
+# This is minimal but valid YAML representing a reaction family rule table.
+schema_version: "1"
+contract_version: "1.0.0"
+families:
+  - family_id: CYS_MICHAEL_ADDITION
+    residue_reaction_family: CYS_MICHAEL_ADDITION
+    target_residue: CYS
+    target_atom: SG
+    allowed_bond_types:
+      - carbon-sulfur
+    warhead_rule_status: calibrated
+    allowed_warhead_smarts:
+      - "[CX3](=[OX1])[CX2]=[CX1]"
+    geometry:
+      bond_length:
+        status: calibrated
+        min: 1.7
+        max: 1.9
+      protein_side_angle:
+        status: calibrated
+        min: 90.0
+        max: 120.0
+      ligand_side_angle:
+        status: calibrated
+        min: 105.0
+        max: 125.0
+    valence:
+      delta: 0
+    protonation:
+      required: SG_minus1
+    forbidden_smarts: []
+    notes: "Michael addition to cysteine thiol"
+  - family_id: LYS_IMINE_FORMATION
+    residue_reaction_family: LYS_IMINE_FORMATION
+    target_residue: LYS
+    target_atom: NZ
+    allowed_bond_types:
+      - carbon-nitrogen
+    warhead_rule_status: pending
+    allowed_warhead_smarts: []
+    geometry:
+      bond_length:
+        status: pending
+      protein_side_angle:
+        status: pending
+      ligand_side_angle:
+        status: pending
+    valence:
+      delta: 0
+    protonation:
+      required: NZ_plus0
+    forbidden_smarts: []
+    notes: "Imine formation with lysine (pending calibration)"

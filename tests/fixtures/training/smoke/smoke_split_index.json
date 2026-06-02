@@ -1,0 +1,54 @@
+{
+  "assignment_count": 4,
+  "assignments": [
+    {
+      "fallback_reason": null,
+      "manual_review_status": null,
+      "protein_cluster_id": null,
+      "record_id": "S01a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+      "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+      "scaffold_key": null,
+      "split": "train"
+    },
+    {
+      "fallback_reason": null,
+      "manual_review_status": null,
+      "protein_cluster_id": null,
+      "record_id": "S02a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+      "residue_reaction_family": "CYS_MICHAEL_ADDITION",
+      "scaffold_key": null,
+      "split": "train"
+    },
+    {
+      "fallback_reason": null,
+      "manual_review_status": null,
+      "protein_cluster_id": null,
+      "record_id": "S03a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+      "residue_reaction_family": "LYS_IMINE_FORMATION",
+      "scaffold_key": null,
+      "split": "train"
+    },
+    {
+      "fallback_reason": null,
+      "manual_review_status": null,
+      "protein_cluster_id": null,
+      "record_id": "S04a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+      "residue_reaction_family": "SER_ESTER_FORMATION",
+      "scaffold_key": null,
+      "split": "train"
+    }
+  ],
+  "contract_version": "1.0.0",
+  "role": "split_index",
+  "schema_version": "1",
+  "split_policy": {
+    "algorithm": "leakage_aware_covalent_splits",
+    "algorithm_version": "1.0.0",
+    "random_seed": 42,
+    "split_ratios": {
+      "test": 0.1,
+      "train": 0.8,
+      "val": 0.1
+    }
+  }
+}

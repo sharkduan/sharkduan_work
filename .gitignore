@@ -25,6 +25,8 @@ env/
 
 # Training, sampling, and experiment outputs
 checkpoints/
+!tests/fixtures/training/checkpoints/
+!tests/fixtures/training/checkpoints/**
 ckpt/
 PocketFlow/ckpt/
 outputs/

@@ -1,0 +1,15 @@
+# covalent_model_smoke.yml — Task 24 forward smoke config
+# Runs PMDM + covalent forward pipeline and logs a deterministic shape summary.
+
+records_path: tests/fixtures/training/smoke/smoke_records.jsonl
+timestep: 0.5
+
+model_config:
+  seed: 7
+  fake_backbone: true
+  ligand_feature_dim: 4
+  protein_feature_dim: 4
+  ligand_pair_feature_dim: 0
+  protein_ligand_pair_feature_dim: 0
+  hidden_dim: 256
+  candidate_radius_angstrom: 4.0

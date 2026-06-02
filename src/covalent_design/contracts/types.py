@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Generic, Mapping, Optional, TypeVar
 
 from covalent_design.contracts.errors import ContractError, ContractErrorInfo
+
+_ISO8601_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$"
+)
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 CONTRACT_VERSION = "1.0.0"
@@ -736,6 +743,8 @@ TRAINING_REQUIRED_INPUT_HASH_KEYS = (
     "records_jsonl",
     "split_index",
     "rule_table",
+    "quality_report",
+    "visual_check_index",
 )
 
 TRAINING_RELEASE_GATE_INPUT_HASH_KEYS = (
@@ -781,6 +790,31 @@ class SamplingSystemFailure:
     retry_count: int
     resource_snapshot: Optional[Mapping[str, object]] = None
     message: str = ""
+
+    def __post_init__(self) -> None:
+        if self.sample_id < 0:
+            raise ValueError(
+                f"sample_id must be non-negative, got {self.sample_id}"
+            )
+        if self.failure_category not in SAMPLING_SYSTEM_FAILURE_CATEGORIES:
+            raise ValueError(
+                f"Unknown failure_category {self.failure_category!r}. "
+                f"Allowed: {SAMPLING_SYSTEM_FAILURE_CATEGORIES}"
+            )
+        if self.retry_count < 0:
+            raise ValueError(
+                f"retry_count must be non-negative, got {self.retry_count}"
+            )
+        if not _ISO8601_RE.fullmatch(self.failure_timestamp):
+            raise ValueError(
+                f"failure_timestamp must be ISO 8601 with time component, "
+                f"got {self.failure_timestamp!r}"
+            )
+        if not _SHA256_RE.match(self.traceback_hash):
+            raise ValueError(
+                f"traceback_hash must be 64 hex characters (SHA-256), "
+                f"got {self.traceback_hash!r}"
+            )
 
 
 @dataclass(frozen=True)

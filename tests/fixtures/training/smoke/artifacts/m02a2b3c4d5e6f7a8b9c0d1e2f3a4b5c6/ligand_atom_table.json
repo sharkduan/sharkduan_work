@@ -1,0 +1,9 @@
+{
+  "atoms": [
+    {"index": 1, "name": "C4", "element": "C", "x": 19.000, "y": 3.500, "z": 4.900},
+    {"index": 2, "name": "C5", "element": "C", "x": 18.500, "y": 4.200, "z": 5.800},
+    {"index": 3, "name": "C6", "element": "C", "x": 17.200, "y": 5.100, "z": 6.200},
+    {"index": 4, "name": "O2", "element": "O", "x": 16.800, "y": 6.000, "z": 7.000}
+  ],
+  "ligand_id": "LIG"
+}
