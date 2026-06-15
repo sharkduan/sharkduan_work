@@ -127,6 +127,62 @@ CLI exit codes:
 
 Human-readable errors go to stderr. Machine-readable errors should be written to `error.json` under `--out` or `--error-out` when provided.
 
+### CLI Error JSON Schema
+
+All CLIs write a frozen error JSON schema when `--error-out <path>` is provided.
+The file is written only on failure (non-zero exit); success paths do not produce
+an error JSON file.  Parent directories are created automatically.
+
+**Schema:**
+
+```json
+{
+  "schema_version": "<SCHEMA_VERSION>",
+  "contract_version": "<CONTRACT_VERSION>",
+  "role": "cli_error",
+  "ok": false,
+  "exit_code": <int>,
+  "error": {
+    "code": "<error code>",
+    "owner": "<contract owner>",
+    "message": "<human-readable message>",
+    "location": "<optional field or path>",
+    "details": {}
+  }
+}
+```
+
+- `role` is always exactly `"cli_error"` — no other value is allowed.
+- `ok` is always `false`.
+- `exit_code` matches the process exit code (one of the CLI exit codes above).
+- `error.code`, `error.owner`, and `error.message` are always present.
+- `error.location` is `null` when no location is applicable.
+- `error.details` defaults to `{}`.
+
+This schema lives in `covalent_design.contracts.cli_errors` and is consumed by
+all CLIs via `contract_error_to_cli_json()` and `exception_to_cli_json()`.
+
+### `--error-out` Support
+
+| CLI | Flag | Notes |
+| --- | --- | --- |
+| `validate_request` | `--error-out <path>` | Writes `cli_error` JSON on `ContractError` |
+| `summarize_results` | `--error-out <path>` | Writes `cli_error` JSON on any exception |
+| `check_denominators` | `--error-out <path>` | Writes `cli_error` JSON on any exception |
+| `write_quality_report` | `--error-out <path>` | Writes `cli_error` JSON on receipt failure |
+
+Other CLIs (`finalize_record_manifests`, `build_splits`, `build_edge_candidates`,
+`validate_rule_table`, `build_calibration_sheet`, `export_visual_checks`,
+`inspect_batch`, `forward_smoke`, `train`) do not yet support `--error-out`.
+
+### Tasks Without CLIs
+
+Task 31 (lifecycle reports), Task 32 (docking protocol), and Task 33 (split
+metrics) are Python APIs only — no CLI entry points exist for these tasks.
+Their modules (`lifecycle_reports.py`, `failure_modes.py`, `validity_metrics.py`,
+`docking_protocol.py`, `split_metrics.py`, `reports.py`) must not expose `main()`
+or `argparse` symbols.
+
 ### Core Types
 
 Shared contracts define:
@@ -2653,6 +2709,105 @@ For one manifest, `request_validation_error_sample_count = 0` and
 Task 30 alone does NOT need to produce split-aware or family-stratified reports.
 Checkpoint C requires Task 33 for full stratification.
 
+### Task 33: Split-Aware Evaluation Reports
+
+Task 33 is a Python API and atomic writer for stratified evaluation reports. It
+does not add a CLI and does not run Checkpoint C.
+
+#### Public APIs
+
+```python
+def load_split_index(path: Path) -> dict[str, object]: ...
+def validate_split_index_for_evaluation(data: dict[str, object]) -> ValidationReceipt: ...
+def load_leakage_report(path: Path) -> dict[str, object]: ...
+def validate_leakage_report_for_evaluation(
+    leakage: dict[str, object],
+    split_index: dict[str, object],
+) -> ValidationReceipt: ...
+def join_results_to_split_assignments(
+    results: tuple[CovalentGenerationResult, ...],
+    split_index: dict[str, object],
+) -> tuple[JoinedAssignment, ...]: ...
+def summarize_split_results(
+    results: tuple[CovalentGenerationResult, ...],
+    split_index: dict[str, object],
+) -> dict[str, object]: ...
+def build_stratified_evaluation_summary(
+    results: tuple[CovalentGenerationResult, ...],
+    split_index: dict[str, object],
+    leakage: dict[str, object],
+    *,
+    docking_index: dict[str, object] | None = None,
+) -> StratifiedEvaluationSummary: ...
+def stratified_evaluation_summary_to_dict(
+    summary: StratifiedEvaluationSummary,
+) -> dict[str, object]: ...
+def write_stratified_evaluation_summary(
+    summary: StratifiedEvaluationSummary,
+    path: Path,
+) -> ArtifactRef: ...
+```
+
+`JoinedAssignment` and `StratifiedEvaluationSummary` are evaluation-package
+dataclasses, not shared `contracts/types.py` types.
+
+#### Join And Input Contracts
+
+The frozen join key is:
+
+```text
+CovalentGenerationResult.request_id == split_index.assignments[].record_id
+```
+
+Task 33 does not support external request-record maps, `(request_id, sample_id)`
+matching, sample_id fallback, fuzzy matching, or directory scanning.
+
+Split index input must carry current `schema_version`, current
+`contract_version`, `role="split_index"`, `assignment_count`, and assignments
+with `record_id`, `split`, `scaffold_key`, `protein_cluster_id`,
+`residue_reaction_family`, `fallback_reason`, and `manual_review_status`.
+
+Leakage report input must carry current `schema_version`, current
+`contract_version`, `role="leakage_report"`, split counts, fallback/manual-review
+counts, scaffold and protein-cluster overlap lists, and boolean
+`zero_overlap.scaffold` / `zero_overlap.protein_cluster`. Split counts are
+cross-validated against the split index.
+
+#### Report Shape
+
+`stratified_evaluation_summary_to_dict()` emits deterministic JSON-compatible
+data with:
+
+- `role="stratified_evaluation_summary"`.
+- `per_split` train/val/test summaries whose `summary` value is
+  `EvaluationSummary`-compatible.
+- `per_family` summaries keyed by canonical `residue_reaction_family`.
+- `scaffold_primary_metrics.per_split` and
+  `protein_cluster_primary_metrics.per_split`, each with deterministic
+  `unique_count` and `values` from the split index.
+- `leakage_report.zero_overlap` and `leakage_report.blocking_primary_leakage`
+  for scaffold and protein-cluster leakage risk.
+- `excluded_summary`, `fallback_exclusions.by_reason` with counts and
+  `record_ids`, and `manual_review_accounting`.
+- `docking_score_eligible_counts` when a docking index is supplied, otherwise
+  `null`.
+
+Every result row is validated with `validate_generation_result()` before
+aggregation. Corrupt rows raise `ContractError` before any output. Per-split
+sampling-system failures are not attributed in Task 33 because the input is a
+result-row list plus split index, not a split-aware run manifest.
+
+#### Task 33 Boundaries
+
+- Does not regenerate or mutate Task 14 splits.
+- Does not infer joins from directories, sample ids, or sample order.
+- Does not implement Task 30 global manifest accounting or duplicate its CLI.
+- Does not implement Task 31 failure-mode reports or Task 32 docking protocol
+  validation.
+- Does not import RDKit, torch, PMDM, PocketFlow, or docking engines.
+- Does not generate Checkpoint C artifacts beyond the explicit
+  `stratified_evaluation_summary.json` writer output.
+
 ### CLI
 
 ```bash
@@ -2662,8 +2817,8 @@ python -m covalent_design.evaluation.summarize_results \
 python -m covalent_design.evaluation.check_denominators \
     --manifest outputs/generation/<job_id>/run_manifest.yml
 
-# Task 32 — docking protocol (not implemented)
-# Task 33 — stratified report (not implemented)
+# Task 32 — pure Python docking-protocol API only (no CLI)
+# Task 33 — pure Python split-aware report API only (no CLI)
 ```
 
 `summarize_results` CLI writes `evaluation_summary.json` to the manifest parent
@@ -2679,6 +2834,381 @@ write files.
 - Only relative artifact URIs are accepted. Absolute paths and traversal outside the manifest parent are rejected.
 - Invalid samples remain in validity denominators.
 - Docking protocol manifest validation, lifecycle reports, and stratified reports are Task 31-33 scope and are not documented as Task 30 APIs.
+
+### Task 31: Lifecycle Validation And Failure Mode Reports
+
+Task 31 exposes Python APIs and an explicit atomic writer only — no standalone CLI.
+It consumes `CovalentGenerationResult` lists (validated by Task 30) and produces
+`FailureModeReport` artifacts.
+
+**`FailureModeReport` is an evaluation-package dataclass** (`covalent_design.evaluation.failure_modes`),
+not a shared `contracts/types.py` type.
+
+#### Public APIs
+
+```python
+# validity_metrics.py
+def validate_results_before_aggregation(
+    results: list[CovalentGenerationResult],
+) -> ValidationReceipt: ...
+    """Validate every result row before any lifecycle aggregation.
+
+    Calls validate_generation_result() on every row.  Any corrupt lifecycle
+    row fails the WHOLE report — no survivor aggregation, no partial output,
+    no corrupt_lifecycle_count partial report, no partial artifact.
+    """
+
+def summarize_lifecycle_statuses(
+    results: list[CovalentGenerationResult],
+) -> dict[str, int]: ...
+    """Validate and count all lifecycle statuses across a result list.
+
+    Calls validate_results_before_aggregation internally and raises
+    ContractError on corrupt rows.  Returns a dict with all 12 status keys:
+    valid_generated, invalid_generated, and each lifecycle-stage status
+    prefixed by complex_export_, docking_eligibility_, docking_run_.
+    """
+
+# failure_modes.py
+def build_failure_mode_report(
+    results: list[CovalentGenerationResult],
+) -> FailureModeReport: ...
+    """Validate all rows, then aggregate failure mode statistics.
+
+    Calls validate_results_before_aggregation internally.  If any row is
+    corrupt the whole report is rejected — no survivor aggregation.
+    """
+
+def build_failure_mode_report_from_manifest(
+    manifest: Path,
+) -> FailureModeReport: ...
+    """Load validated results via Task 30 load_validated_results(manifest),
+    then build a failure mode report."""
+
+def failure_mode_report_to_dict(
+    report: FailureModeReport,
+) -> dict[str, object]: ...
+    """Serialize a FailureModeReport to a deterministic JSON-compatible dict."""
+
+def write_failure_mode_report(
+    report: FailureModeReport,
+    path: Path,
+) -> ArtifactRef: ...
+    """Write *report* to *path* atomically with same-directory tempfile,
+    fsync, and os.replace.  Returns an ArtifactRef with role=failure_mode_report,
+    format=json."""
+
+# Task 30 helper (denominator_accounting.py) — reused by Task 31
+def load_validated_results(
+    manifest: Path,
+) -> list[CovalentGenerationResult]: ...
+    """Load a generation-run manifest and return fully validated results.
+
+    Preserves all Task 30 validation: manifest parsing, artifact ref checks,
+    checksum checks, JSONL schema checks, failures JSONL validation, manifest
+    count checks, decode_result_row(), and validate_generation_result().
+    Never exposes raw rows.  Does not produce denominator equations.
+    """
+```
+
+#### Validate-All-Before-Aggregate
+
+`validate_results_before_aggregation` calls `validate_generation_result` on every row.
+If any single row is corrupt (e.g. `generation_validity_status = "invalid"` but
+`docking_run_status = "succeeded"`), the entire receipt fails.  No survivor
+aggregation, no `corrupt_lifecycle_count` partial report, no partial artifact on disk.
+
+Both `summarize_lifecycle_statuses` and `build_failure_mode_report` call
+`validate_results_before_aggregation` internally and propagate the failure as a
+`ContractError`.
+
+#### FROZEN_REASON_STAGE_MAP
+
+```python
+FROZEN_REASON_STAGE_MAP: Mapping[str, str] = {
+    # generation (4)
+    "LIGAND_RECONSTRUCTION_FAILED": "generation",
+    "LIGAND_CHEMISTRY_INVALID": "generation",
+    "NO_COVALENT_EDGE_PREDICTED": "generation",
+    "COVALENT_EDGE_BELOW_THRESHOLD": "generation",
+    # generation_gate (6)
+    "REACTION_FAMILY_RULE_FAIL": "generation_gate",
+    "WARHEAD_MATCH_FAIL": "generation_gate",
+    "VALENCE_CHECK_FAIL": "generation_gate",
+    "GEOMETRY_CHECK_FAIL": "generation_gate",
+    "REQUIRED_GATE_STATE_UNAVAILABLE": "generation_gate",
+    "UNSUPPORTED_GENERATED_CHEMISTRY": "generation_gate",
+    # export (1)
+    "COMPLEX_EXPORT_FAILED": "export",
+    # docking_eligibility (1)
+    "DOCKING_NOT_EVALUABLE": "docking_eligibility",
+    # docking_run (1)
+    "DOCKING_RUN_FAILED": "docking_run",
+}
+```
+
+Five lifecycle stages: `generation`, `generation_gate`, `export`, `docking_eligibility`,
+`docking_run`.  Every `FAILURE_REASON_CODES` value maps to exactly one stage.  Unknown
+reasons raise `ContractError(code="FAILURE_REPORT_REASON_NOT_MAPPED")` — no silent
+mapping.
+
+#### FailureModeReport Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `primary_reason_counts` | `Mapping[str, int]` | Global primary failure reason counts |
+| `secondary_reason_counts` | `Mapping[str, int]` | Global secondary failure reason counts |
+| `primary_reason_counts_by_family` | `Mapping[str, Mapping[str, int]]` | Primary counts grouped by `residue_reaction_family` |
+| `secondary_reason_counts_by_family` | `Mapping[str, Mapping[str, int]]` | Secondary counts grouped by `residue_reaction_family` |
+| `primary_reason_counts_by_stage` | `Mapping[str, Mapping[str, int]]` | Primary counts grouped by lifecycle stage |
+| `secondary_reason_counts_by_stage` | `Mapping[str, Mapping[str, int]]` | Secondary counts grouped by lifecycle stage |
+| `primary_reason_counts_by_family_and_stage` | `Mapping[str, Mapping[str, Mapping[str, int]]]` | Primary counts by family and stage |
+| `secondary_reason_counts_by_family_and_stage` | `Mapping[str, Mapping[str, Mapping[str, int]]]` | Secondary counts by family and stage |
+| `lifecycle_statuses` | `Mapping[str, int]` | From `summarize_lifecycle_statuses` |
+| `evidence` | `tuple[Mapping[str, object], ...]` | Per-failure-row evidence with family, sample_id, primary/secondary reason, and lifecycle stage |
+
+#### Key Design Rules
+
+- **Canonical `residue_reaction_family` grouping only.** No protein-cluster, scaffold,
+  or split-aware strata in Task 31.
+- **Primary and secondary counts are separate** — globally and per-family.
+- **Lifecycle stage is preserved** globally (`primary_reason_counts_by_stage`),
+  by family (`primary_reason_counts_by_family_and_stage`), and in every evidence entry
+  (`primary_failure_stage`, `secondary_failure_stages`).
+- **`primary_failure_reason=None` (success) does not contribute** to any reason count.
+- **Invalid but lifecycle-consistent results** remain in statistics — they are counted
+  in `lifecycle_statuses` and their failure reasons appear in the report.
+- **Deterministic ordering:** families sorted alphabetically, reasons sorted
+  alphabetically within each group, evidence sorted by (family, reason, sample_id).
+- **Atomic UTF-8 JSON writer:** same-directory tempfile → fsync → os.replace.
+  Returns `ArtifactRef` with `role="failure_mode_report"`, `format="json"`.
+- **`build_failure_mode_report_from_manifest`** delegates to
+  `load_validated_results(manifest)` from Task 30 (denominator_accounting).  Raw rows
+  are never exposed.  Manifest/artifact/checksum/JSONL validation is preserved without
+  duplicating Task 30 denominator equations.
+- **No Task 31 CLI.**  Task 31 is a pure Python API.
+- **Task 32 docking protocol and Task 33 split-aware reports are outside Task 31.**
+  Task 31 does not import or reference Task 32/33 modules.
+
+#### CLI
+
+No standalone Task 31 CLI.  Task 31 is called programmatically from Task 30-based
+orchestration.
+
+### Task 32: Docking Protocol Manifest Validation And Score Index
+
+Task 32 implements protocol-manifest validation and a flat `DockingScoreEligibleResultIndex`
+Python API. It does **not** execute docking, has **no** CLI, and does **not** choose an
+authoritative docking engine for v1. ADR 0032 and `docs/covalent_generation_io_contract.md`
+(lines 331-390) govern the authoritative nested YAML manifest schema.
+
+#### Shared Contract Types
+
+All six types below are frozen dataclasses in `covalent_design.contracts.types`:
+
+```python
+@dataclass(frozen=True)
+class ReceptorPreparation:
+    tool_name: str = ""
+    tool_version: str = ""
+    input_structure_uri: str = ""
+    input_structure_sha256: str = ""
+    output_receptor_uri: str = ""
+    output_receptor_sha256: str = ""
+    pH_or_protonation_policy: str = ""
+    water_policy: str = "keep"        # "keep" | "remove" | "selected"
+    cofactor_policy: str = "keep"     # "keep" | "remove" | "selected"
+    metal_policy: str = "keep"        # "keep" | "remove" | "selected"
+
+@dataclass(frozen=True)
+class LigandPreparation:
+    tool_name: str = ""
+    tool_version: str = ""
+    input_ligand_uri: str = ""
+    input_ligand_sha256: str = ""
+    charge_model: str = ""
+    protonation_policy: str = ""
+
+@dataclass(frozen=True)
+class CovalentConstraint:
+    representation: str = "other"     # "explicit_linkage" | "distance_constraint" | "reaction_constraint" | "other"
+    target_atom_identity: str = ""
+    ligand_atom_identity: str = ""
+    constraint_parameters: Mapping[str, object] = field(default_factory=dict)  # may be empty
+
+@dataclass(frozen=True)
+class DockingSearchRegion:
+    center: tuple[float, ...] = (0.0, 0.0, 0.0)  # numeric triple, no sign restriction on center
+    size: tuple[float, ...] = (0.0, 0.0, 0.0)    # numeric triple, components must be positive
+    unit: str = "angstrom"                         # "angstrom" only
+
+@dataclass(frozen=True)
+class PoseSelection:
+    ranking_rule: str = "best_score"  # "best_score" | "first_valid" | "other"
+    score_unit: str = ""
+
+@dataclass(frozen=True)
+class DockingProtocolManifest:
+    docking_protocol_id: str = ""
+    engine_name: str = ""
+    engine_version: str = ""
+    engine_build_hash: str = ""
+    full_config_uri: str = ""
+    full_config_sha256: str = ""
+    random_seed: Optional[int] = None
+    receptor_preparation: ReceptorPreparation = field(default_factory=ReceptorPreparation)
+    ligand_preparation: LigandPreparation = field(default_factory=LigandPreparation)
+    covalent_constraint: CovalentConstraint = field(default_factory=CovalentConstraint)
+    search_region: DockingSearchRegion = field(default_factory=DockingSearchRegion)
+    pose_selection: PoseSelection = field(default_factory=PoseSelection)
+    failure_log_uri: str = ""
+    failure_log_sha256: str = ""
+```
+
+#### Public API (6 Functions, No CLI)
+
+```python
+# All in covalent_design.evaluation.docking_protocol
+
+def load_docking_protocol_manifest(path: Path) -> DockingProtocolManifest: ...
+    """Decode a docking protocol manifest YAML file.
+
+    Decodes inline JSON-compatible values left as strings by the minimal YAML loader
+    (e.g. ``[10.0, 20.0, 30.0]``, ``{}``).  Missing nested required fields decode to
+    invalid placeholder values so the validator reports failure instead of the loader
+    crashing.  Unreadable or non-mapping YAML raises structured ``ContractError``.
+    """
+
+def validate_docking_protocol_manifest(
+    manifest: DockingProtocolManifest,
+    artifact_root: Path,
+) -> ValidationReceipt: ...
+    """Validate a docking protocol manifest against the frozen IO contract.
+
+    Returns a ``ValidationReceipt``.  The receipt is failed when any required field
+    is missing, empty, out-of-enum, or when a referenced artifact URI is unsafe,
+    missing, or has a checksum mismatch.
+
+    Validation rules:
+    - All required string fields must be non-empty.
+    - SHA-256 fields must be 64 lowercase hex characters.
+    - engine_build_hash is required and non-empty but may be ``unknown``; it is
+      provenance text, not a ``*_sha256`` field.
+    - Enum fields must use allowed values (see contract types above).
+    - search_region.center and size must be numeric triples; size components positive.
+    - random_seed must be int or None; bool is rejected.
+    - constraint_parameters must be a mapping (may be empty).
+    - All artifact URIs must be root-relative: absolute paths, traversal (../), and
+      backslash traversal are rejected.
+    - Referenced artifact files (full_config, receptor_input, receptor_output,
+      ligand_input, failure_log) must exist with matching SHA-256.
+    - failure_log_uri and failure_log_sha256 are required; the file may be zero-byte.
+    """
+
+def docking_protocol_manifest_to_dict(
+    manifest: DockingProtocolManifest,
+) -> dict[str, object]: ...
+    """Serialize a DockingProtocolManifest to a deterministic JSON-compatible dict
+    preserving every field (including nested sub-structs and constraint_parameters)."""
+
+def build_docking_score_eligible_result_index(
+    results: list[CovalentGenerationResult],
+    protocol_manifests: Mapping[str, object],
+    artifact_root: Path,
+) -> DockingScoreEligibleResultIndex: ...
+    """Build a DockingScoreEligibleResultIndex from validated generation results.
+
+    * Validates every input result via ``validate_generation_result`` first.
+      Corrupt lifecycle rows raise ``ContractError`` before any output.
+    * Filters to valid/exported/eligible/succeeded rows with
+      ``covalent_docking_score is not None``.
+    * Requires every surviving row to have an ``artifacts["docking_protocol_manifest"]``
+      ``ArtifactRef`` whose URI maps to a supplied manifest in ``protocol_manifests``.
+    * Validates the manifest ``ArtifactRef`` itself against ``artifact_root``,
+      reloads the referenced YAML, requires it to match the supplied manifest
+      object, then validates all internal protocol artifacts.
+    * Missing association, missing supplied manifest, manifest ref mismatch,
+      incomplete manifest, bad URI, or checksum mismatch raises
+      ``ContractError`` — succeeded rows are never silently omitted.
+    * QuickVina2-only baseline rows (no covalent docking score) are excluded normally.
+    * Does not mutate input results.
+    """
+
+def docking_score_eligible_result_index_to_dict(
+    index: DockingScoreEligibleResultIndex,
+) -> dict[str, object]: ...
+    """Serialize a DockingScoreEligibleResultIndex to a JSON-compatible dict.
+
+    Output includes ``role`` (``"docking_score_eligible_result_index"``),
+    ``format`` (``"json"``), ``counts.total_eligible_entries``, and a flat
+    ``entries`` list.  Entries are sorted deterministically by
+    (request_id, sample_id, docking_protocol_id)."""
+
+def write_docking_score_eligible_result_index(
+    index: DockingScoreEligibleResultIndex,
+    path: Path,
+) -> ArtifactRef: ...
+    """Write *index* to *path* atomically.
+
+    Uses a same-directory tempfile that is fsync'd and os.replace'd into place.
+    Returns an ``ArtifactRef`` with ``role=docking_score_eligible_result_index``,
+    ``format=json``.  No temp artifacts remain after a successful write.
+    """
+```
+
+#### Index Entry Structure
+
+```python
+@dataclass(frozen=True)
+class DockingScoreEligibleResult:
+    """One flat entry in a DockingScoreEligibleResultIndex."""
+    request_id: str
+    sample_id: int
+    docking_protocol_id: str
+    covalent_docking_score: float
+    noncovalent_vina_score: Optional[float]
+    engine_name: str
+    engine_version: str
+
+@dataclass(frozen=True)
+class DockingScoreEligibleResultIndex:
+    """Index of all docking-score-eligible succeeded results."""
+    entries: tuple[DockingScoreEligibleResult, ...]
+```
+
+Both types live in `covalent_design.evaluation.docking_protocol`, not in
+shared `contracts/types.py`.
+
+#### Key Design Rules
+
+- **Manifest-first.** Index entries link explicitly through `ArtifactRef` in
+  `result.artifacts["docking_protocol_manifest"]`. `protocol_manifests` is keyed
+  by that `ArtifactRef.uri`. No directory scanning inference.
+- **Hard ContractError on incomplete manifest association.** A succeeded row with
+  missing, incomplete, or corrupt manifest association fails the whole index build.
+  No survivor index; no partial output.
+- **QuickVina2-only rows excluded.** Noncovalent scores stay in `noncovalent_vina_score`;
+  `covalent_docking_score` stays null. A future documented covalent-linkage wrapper
+  is not prohibited by engine-name string alone.
+- **Deterministic flat ordering.** `(request_id, sample_id, docking_protocol_id)`.
+  The flat sort is non-stochastic.
+- **Atomic writer.** Same-directory tempfile → fsync → os.replace.
+  Returns `ArtifactRef` with `role=docking_score_eligible_result_index`, `format=json`.
+- **No docking engine selection.** Task 32 does not choose an authoritative covalent
+  docking engine. The unresolved question remains for v1.
+- **No Task 33 implementation.** Task 32 does not implement split/family stratified
+  reports. No Task 33 imports or behavior.
+- **No CLI.** Task 32 is a pure Python API.
+
+#### Misuse Guards
+
+- Artifact URIs must be root-relative. Absolute paths and traversal (including
+  backslash traversal) are rejected.
+- SHA-256 must be 64 lowercase hex. Uppercase and non-hex characters are rejected.
+- Only size components of the search region must be positive; center components
+  have no sign restriction.
+- Boolean values are not valid `random_seed` values (must be int or None).
+- `constraint_parameters` must be a mapping, never a list or scalar.
 
 ## Boundary Validation Points
 

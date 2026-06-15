@@ -520,7 +520,7 @@ python -m covalent_design.viz.cli.export_visual_checks --records tests/fixtures/
 **Acceptance criteria:**
 
 - Public API: `write_quality_report(processed_root: Path, *, ingest_roots: Optional[list[Path]] = None, splits_root: Optional[Path] = None, visual_checks_root: Optional[Path] = None, out_path: Optional[Path] = None) -> ContractEnvelope[dict]`. Returns a `ContractEnvelope` whose payload is the full report dict (role `"quality_report"`) and whose `receipt.ok` reflects source coverage and count reconciliation status.
-- CLI: `python -m covalent_design.data.cli.write_quality_report --processed-root <processed_root> [--ingest-roots <dir> ...] [--splits-root <dir>] [--visual-checks-root <dir>] [--out <path>]`. Prints a JSON summary (`{"ok": bool, "errors": [...]}`) to stdout and exits zero on success; data-quality failures use the project `data_quality_gate_failed` exit code.
+- CLI: `python -m covalent_design.data.cli.write_quality_report --processed-root <processed_root> [--ingest-roots <dir> ...] [--splits-root <dir>] [--visual-checks-root <dir>] [--out <path>] [--error-out <path>]`. Prints a JSON summary (`{"ok": bool, "errors": [...]}`) to stdout and exits zero on success; data-quality failures use the project `data_quality_gate_failed` exit code.  On failure, `--error-out <path>` writes a `cli_error` JSON file (role `"cli_error"`, schema from `contracts.cli_errors`).
 - Reads `records.jsonl`, `rejected_index.jsonl`, and `conflict_index.jsonl` from `processed_root`. Discovers per-record `edge_candidates.json` artifacts under `processed_root/artifacts/<record_id>/`.
 - Report includes all required sections: `source_coverage`, `reconciliation`, `family_distribution`, `residue_distribution`, `warhead_distribution`, `linkage_quality`, `geometry_quality`, `protein_chemical_state_quality`, `candidate_stats`, `quality_tier_distribution`. When `--splits-root` is provided, `split_stats` is included. When `--visual-checks-root` is provided, `visual_check_summary` is included.
 - **`source_coverage`**: populated from each `--ingest-roots` entry's `ingest_index.json`. Each source entry reports `complete_for_v1`, `record_count`, and `failure_count`. Missing or unreadable `ingest_index.json` is reported with `complete_for_v1: false` and a diagnostic flag (`missing_ingest_index` or `unreadable_ingest_index`).
@@ -1265,7 +1265,7 @@ pytest tests/training/test_run_manifest.py -q
 - `write_normalized_request()` produces deterministic UTF-8 YAML; callable by Task 27, not an implicit side effect of Task 26 validation.
 - Task 26 does not write generation, checkpoint, sampling, or normalized artifacts.
 - Structure reader is pure Python; no RDKit, no torch.
-- CLI: `python -m covalent_design.inference.validate_request --request <path> [--rules <path>]`. Default rule table: `data/rules/reaction_family_rule_table.yml`.
+- CLI: `python -m covalent_design.inference.validate_request --request <path> [--rules <path>] [--error-out <path>]`. Default rule table: `data/rules/reaction_family_rule_table.yml`.  On `ContractError`, `--error-out <path>` writes a `cli_error` JSON file with role `"cli_error"`.
 - Request validation failure is a request contract error (`ContractError(owner="request")`), not an invalid generated sample.
 - Task 27 is implemented.
 
@@ -1493,12 +1493,14 @@ def write_evaluation_summary(summary: EvaluationSummary, path: Path) -> Artifact
 
 ```bash
 python -m covalent_design.evaluation.summarize_results \
-    --manifest outputs/generation/<job_id>/run_manifest.yml
+    --manifest outputs/generation/<job_id>/run_manifest.yml \
+    [--error-out <path>]
 python -m covalent_design.evaluation.check_denominators \
-    --manifest outputs/generation/<job_id>/run_manifest.yml
+    --manifest outputs/generation/<job_id>/run_manifest.yml \
+    [--error-out <path>]
 ```
 
-The `summarize_results` CLI writes `evaluation_summary.json` to the manifest parent directory and prints the summary as deterministic JSON to stdout. `check_denominators` prints the validation receipt to stdout without writing files.
+The `summarize_results` CLI writes `evaluation_summary.json` to the manifest parent directory and prints the summary as deterministic JSON to stdout. `check_denominators` prints the validation receipt to stdout without writing files.  Both CLIs support `--error-out <path>` to write a `cli_error` JSON file on failure (role `"cli_error"`, schema from `contracts.cli_errors`).
 
 **Acceptance criteria:**
 
@@ -1528,21 +1530,49 @@ python -m covalent_design.evaluation.check_denominators --manifest <run_manifest
 
 ### Task 31: Implement Lifecycle Validation And Failure Mode Reports
 
-**Goal:** Reject corrupt lifecycle rows before aggregation; group failures by primary/secondary reason with lifecycle stage preserved.
+**Goal:** Reject corrupt lifecycle rows before aggregation; group failures by primary/secondary reason with lifecycle stage preserved globally, by family, and in evidence.
 
 **Files/modules:**
 
-- `src/covalent_design/evaluation/validity_metrics.py`
-- `src/covalent_design/evaluation/failure_modes.py`
+- `src/covalent_design/evaluation/validity_metrics.py` — `validate_results_before_aggregation`, `summarize_lifecycle_statuses`
+- `src/covalent_design/evaluation/failure_modes.py` — `FROZEN_REASON_STAGE_MAP`, `FailureModeReport`, `build_failure_mode_report`, `build_failure_mode_report_from_manifest`, `failure_mode_report_to_dict`, `write_failure_mode_report`
+- `src/covalent_design/evaluation/lifecycle_reports.py` — thin re-export facade
 - `tests/evaluation/test_lifecycle_reports.py`
 
-**Dependencies:** Task 30.
+**Dependencies:** Task 30 (reuses `load_validated_results` from `denominator_accounting`).
+
+**Public API (Python only — no CLI):**
+
+```python
+# validity_metrics.py
+validate_results_before_aggregation(results) -> ValidationReceipt
+summarize_lifecycle_statuses(results) -> dict[str, int]
+
+# failure_modes.py
+build_failure_mode_report(results) -> FailureModeReport
+build_failure_mode_report_from_manifest(manifest) -> FailureModeReport
+failure_mode_report_to_dict(report) -> dict[str, object]
+write_failure_mode_report(report, path) -> ArtifactRef
+```
+
+**Contracts:** `FailureModeReport` is an evaluation-package dataclass (in `failure_modes.py`), not a shared `contracts/types.py` type. `FROZEN_REASON_STAGE_MAP` maps every `FAILURE_REASON_CODES` value to one of five lifecycle stages: `generation`, `generation_gate`, `export`, `docking_eligibility`, `docking_run`.
 
 **Acceptance criteria:**
 
-- Corrupt lifecycle rows (e.g., `docking_run_status = succeeded` but `generation_validity_status = invalid`) rejected before aggregation.
-- Primary and secondary failure reasons grouped by `residue_reaction_family`.
-- Reports stratify by `residue_reaction_family`.
+- **Validate-all-before-aggregate:** `validate_results_before_aggregation` calls `validate_generation_result` on every row. One corrupt lifecycle row fails the WHOLE report — no survivor aggregation, no `corrupt_lifecycle_count` partial report, no partial output artifact. Both `summarize_lifecycle_statuses` and `build_failure_mode_report` call `validate_results_before_aggregation` internally and propagate failure as `ContractError`.
+- **`validate_generation_result` reuse:** validation delegates to the existing Task 2 lifecycle validator; no new validation logic is duplicated.
+- **`load_validated_results` reuse (Task 30 helper):** `build_failure_mode_report_from_manifest` delegates to `load_validated_results(manifest)` from `denominator_accounting`. Manifest parsing, artifact ref checks, checksum checks, JSONL schema checks, failures JSONL validation, manifest count checks, `decode_result_row()`, and `validate_generation_result()` are all preserved. Raw rows are never exposed.
+- **Canonical `residue_reaction_family` grouping only.** No protein-cluster, scaffold, or split-aware strata.
+- **Primary and secondary counts separate** globally and by family.
+- **`primary_failure_reason=None` (success) does not contribute** to reason counts.
+- **Lifecycle stage preserved** globally (`primary_reason_counts_by_stage`), by family and stage (`primary_reason_counts_by_family_and_stage`), and in every evidence entry with `primary_failure_stage` and `secondary_failure_stages`.
+- **Invalid but lifecycle-consistent results** remain in statistics — counted in `lifecycle_statuses` with their failure reasons in the report.
+- **Deterministic ordering:** families sorted alphabetically, reasons sorted alphabetically, evidence sorted by (family, reason, sample_id).
+- **Atomic UTF-8 JSON writer:** `write_failure_mode_report` uses same-directory tempfile, fsync, and os.replace. Returns `ArtifactRef` with `role="failure_mode_report"`, `format="json"`. No temp artifacts left behind.
+- **No duplication of Task 30 denominator equations.** Task 31 uses `load_validated_results` for input validation and `summarize_lifecycle_statuses` for status counting; denominator conservation remains Task 30 scope.
+- **Unknown failure reasons** raise `ContractError(code="FAILURE_REPORT_REASON_NOT_MAPPED")` — no silent mapping.
+- **No Task 31 CLI.** Task 31 exposes Python APIs and an explicit atomic writer only.
+- **Task 32 docking protocol and Task 33 split-aware reports are outside Task 31.** Task 31 does not import or reference Task 32/33 modules.
 
 **Verification:**
 
@@ -1550,22 +1580,99 @@ python -m covalent_design.evaluation.check_denominators --manifest <run_manifest
 pytest tests/evaluation/test_lifecycle_reports.py -q
 ```
 
-### Task 32: Implement Docking Protocol Manifest Interface
+### Task 32: Implement Docking Protocol Manifest Validation And Score Index
 
-**Goal:** Validate docking protocol manifests. Only valid + exported + eligible + succeeded + complete-manifest samples enter `DockingScoreEligibleResultIndex`.
+**Goal:** Validate docking protocol manifests and build a flat `DockingScoreEligibleResultIndex`
+from succeeded covalent docking results. Task 32 does not execute docking and has no CLI.
 
 **Files/modules:**
 
-- `src/covalent_design/evaluation/docking_protocol.py`
+- `src/covalent_design/evaluation/docking_protocol.py` — all public API functions
+- `src/covalent_design/contracts/types.py` — shared frozen contract types
+- `src/covalent_design/evaluation/__init__.py` — re-exports
 - `tests/evaluation/test_docking_protocol.py`
 
-**Dependencies:** Task 31.
+**Dependencies:** Tasks 30, 31.
+
+**Contracts:** ADR 0032 and `docs/covalent_generation_io_contract.md` lines 331-390 govern the
+authoritative nested YAML manifest schema. Task 32 does not introduce a simplified
+covalent/settings/artifacts schema.
+
+**Shared frozen contract types** (in `covalent_design.contracts.types`):
+
+- `ReceptorPreparation` — 10 fields: tool_name, tool_version, input_structure_uri, input_structure_sha256, output_receptor_uri, output_receptor_sha256, pH_or_protonation_policy, water_policy, cofactor_policy, metal_policy
+- `LigandPreparation` — 6 fields: tool_name, tool_version, input_ligand_uri, input_ligand_sha256, charge_model, protonation_policy
+- `CovalentConstraint` — 4 fields: representation, target_atom_identity, ligand_atom_identity, constraint_parameters (mapping, may be empty)
+- `DockingSearchRegion` — 3 fields: center (numeric triple), size (numeric triple, components positive), unit (angstrom only)
+- `PoseSelection` — 2 fields: ranking_rule (best_score | first_valid | other), score_unit
+- `DockingProtocolManifest` — 14 top-level fields embedding the five sub-dataclasses
+
+**Public API (6 functions, no CLI):**
+
+```python
+load_docking_protocol_manifest(path) -> DockingProtocolManifest
+validate_docking_protocol_manifest(manifest, artifact_root) -> ValidationReceipt
+docking_protocol_manifest_to_dict(manifest) -> dict[str, object]
+build_docking_score_eligible_result_index(results, protocol_manifests, artifact_root) -> DockingScoreEligibleResultIndex
+docking_score_eligible_result_index_to_dict(index) -> dict[str, object]
+write_docking_score_eligible_result_index(index, path) -> ArtifactRef
+```
 
 **Acceptance criteria:**
 
-- Complete protocol manifest required for `covalent_docking_score`.
-- QuickVina2-only fixture → `noncovalent_vina_score` populated, `covalent_docking_score = null`.
-- `DockingScoreEligibleResultIndex` includes only valid, exported, eligible, succeeded samples with complete manifests.
+1. **Manifest loader** (`load_docking_protocol_manifest`): decodes YAML with inline-JSON value
+   decoding (e.g. `[10.0, 20.0, 30.0]`, `{}`). Missing nested sections default to empty dicts
+   so the validator rejects them cleanly. Unreadable or non-mapping YAML raises structured
+   `ContractError`.
+
+2. **Manifest validator** (`validate_docking_protocol_manifest`): returns `ValidationReceipt`.
+   Validates all required string fields are non-empty, SHA-256 fields are 64 lowercase hex,
+   enum fields use allowed values, search region center/size are numeric triples (size positive),
+   random_seed is int or None (bool rejected), constraint_parameters is a mapping (may be empty),
+   all artifact URIs are root-relative (reject absolute paths and traversal including backslash),
+   and all referenced artifact files exist with matching SHA-256.
+   `engine_build_hash` is required non-empty provenance text and may be `unknown`; it is
+   not a `*_sha256` field.
+
+3. **Artifact validation scope**: full_config_uri, receptor_preparation.input_structure_uri,
+   receptor_preparation.output_receptor_uri, ligand_preparation.input_ligand_uri, and
+   failure_log_uri. Each must exist on disk and SHA-256 must match.
+
+4. **failure_log_uri and failure_log_sha256 are required.** The referenced file may be zero-byte
+   when the SHA-256 matches.
+
+5. **constraint_parameters** may be an empty mapping. **random_seed** may be null.
+
+6. **Index builder** (`build_docking_score_eligible_result_index`): validates every result via
+   `validate_generation_result` first. Filters to valid + exported + eligible + succeeded +
+   `covalent_docking_score is not None`. Requires every survivor to have
+   `artifacts["docking_protocol_manifest"]` — missing association is a hard `ContractError`.
+   `protocol_manifests` is keyed by that `ArtifactRef.uri`. Validates the manifest ArtifactRef
+   (existence + checksum), reloads the referenced YAML and requires it to match the supplied
+   manifest object, then validates all internal protocol artifacts. Missing supplied manifest,
+   substituted manifest content, manifest ref checksum mismatch, wrong type, or corrupt internal
+   artifacts all raise `ContractError` — no survivor index.
+
+7. **QuickVina2-only exclusion**: rows with `docking_run_status = "not_run"` and
+   `covalent_docking_score = null` are excluded normally. `noncovalent_vina_score` remains
+   populated on those rows. A future documented covalent-linkage/constrained wrapper is not
+   prohibited by engine-name string alone.
+
+8. **Deterministic flat ordering**: entries sorted by `(request_id, sample_id, docking_protocol_id)`.
+
+9. **Index serializer** (`docking_score_eligible_result_index_to_dict`): produces JSON-compatible
+   dict with `role=docking_score_eligible_result_index`, `format=json`, `counts.total_eligible_entries`,
+   and a flat `entries` list sorted deterministically.
+
+10. **Atomic writer** (`write_docking_score_eligible_result_index`): same-directory tempfile,
+    fsync, os.replace. Returns `ArtifactRef` with `role=docking_score_eligible_result_index`,
+    `format=json`. No temp artifacts remain.
+
+11. **Source guard**: no RDKit, torch, PMDM, PocketFlow, or docking engine imports. No Task 33
+    imports. No directory-scanning manifest inference. No CLI.
+
+12. **Prior content intact**: Task 31 content is not modified. Task 32 does not choose an
+    authoritative docking engine and does not implement Task 33 split/family reports.
 
 **Verification:**
 
@@ -1587,17 +1694,54 @@ pytest tests/evaluation/test_docking_protocol.py -q
 
 **Acceptance criteria:**
 
-- Per-split `EvaluationSummary` for each of train/val/test.
-- Per-family breakdown within each split.
-- Protein-cluster and de-warheaded scaffold as primary metrics.
-- Random split labeled as debug/secondary.
-- Scaffold fallback exclusions reported.
+- Public APIs live in `covalent_design.evaluation.split_metrics` with a thin
+  `covalent_design.evaluation.reports` facade:
+  `load_split_index`, `validate_split_index_for_evaluation`,
+  `load_leakage_report`, `validate_leakage_report_for_evaluation`,
+  `join_results_to_split_assignments`, `summarize_split_results`,
+  `build_stratified_evaluation_summary`,
+  `stratified_evaluation_summary_to_dict`, and
+  `write_stratified_evaluation_summary`.
+- Split index inputs must carry `schema_version`, `contract_version`,
+  `role="split_index"`, `assignment_count`, and assignments with
+  `record_id`, `split`, `scaffold_key`, `protein_cluster_id`,
+  `residue_reaction_family`, `fallback_reason`, and `manual_review_status`.
+- Leakage report inputs must carry `schema_version`, `contract_version`,
+  `role="leakage_report"`, split counts, fallback/manual-review counts,
+  scaffold/protein-cluster overlap lists, and boolean `zero_overlap` flags.
+  Counts are cross-validated against the split index.
+- Frozen join key: `CovalentGenerationResult.request_id ==
+  split_index.assignments[].record_id`. Task 33 does not support external
+  request-record maps, `(request_id, sample_id)` matching, sample_id fallback,
+  fuzzy matching, or directory scanning.
+- Every result row is validated with `validate_generation_result` before
+  aggregation. Corrupt rows raise structured `ContractError` before output.
+- Per-split lifecycle summaries are `EvaluationSummary`-compatible for
+  train/val/test. Task 33 does not rerun Task 30 manifest accounting; per-split
+  sampling-system failures are not attributed without an explicit split-aware
+  sampling failure input.
+- Per-family breakdown uses canonical `residue_reaction_family`; no
+  `reaction_family` alias is introduced.
+- Scaffold and protein-cluster primary metrics come from the split index and
+  include deterministic per-split `unique_count` and `values`.
+- Leakage blocking risks are reported separately for scaffold and
+  protein-cluster overlap; Task 33 reports risk and does not regenerate splits.
+- Excluded and fallback records are reported with deterministic counts and
+  fallback `record_ids`; manual review accounting is preserved.
+- Optional docking score eligible index counts can be joined by request id;
+  absence of docking input is valid and reported as `null`.
+- Writer output is deterministic UTF-8 JSON via same-directory tempfile,
+  fsync, and `os.replace`, returning an `ArtifactRef` with
+  `role="stratified_evaluation_summary"`.
+- No CLI is introduced in Task 33. No RDKit, torch, PMDM, PocketFlow, docking
+  engine, split regeneration, Checkpoint C execution, or inference/model/training
+  behavior is implemented.
 - Output: `stratified_evaluation_summary.json`.
 
 **Verification:**
 
 ```bash
-pytest tests/evaluation/test_split_reports.py -q
+python -m unittest tests.evaluation.test_split_reports -v
 ```
 
 ### Checkpoint C: Inference And Evaluation Gate
