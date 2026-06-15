@@ -1,0 +1,39 @@
+docking_protocol_id: "prot-valid-001"
+engine_name: "vina_covalent"
+engine_version: "1.2.3"
+engine_build_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+full_config_uri: "configs/docking_config.txt"
+full_config_sha256: "71480575164df0f97ca6b74924fe0fa1f42a281e0035850e8d11b4bb7e4dff50"
+random_seed: 42
+receptor_preparation:
+  tool_name: "pdb2pqr"
+  tool_version: "3.0.0"
+  input_structure_uri: "input/receptor.pdb"
+  input_structure_sha256: "652b234958939ac3f4e29c4596a73dfd9cd18ae1a6bee5ae0ef1d64557419349"
+  output_receptor_uri: "output/receptor.pdbqt"
+  output_receptor_sha256: "581c7b0a198482b953284528ff46dd75712462deb2c84a4c2687662496972ce1"
+  pH_or_protonation_policy: "pH 7.4"
+  water_policy: remove
+  cofactor_policy: keep
+  metal_policy: keep
+ligand_preparation:
+  tool_name: "obabel"
+  tool_version: "3.0.0"
+  input_ligand_uri: "input/ligand.sdf"
+  input_ligand_sha256: "7a152ed2b048e728c9dd093b70bc9b0bf635454bc2ad2d69b9a1706b17217bbc"
+  charge_model: "gasteiger"
+  protonation_policy: "pH 7.4"
+covalent_constraint:
+  representation: distance_constraint
+  target_atom_identity: "A:145:CYS:SG"
+  ligand_atom_identity: "C1"
+  constraint_parameters: {}
+search_region:
+  center: [10.0, 20.0, 30.0]
+  size: [15.0, 15.0, 15.0]
+  unit: angstrom
+pose_selection:
+  ranking_rule: best_score
+  score_unit: "kcal/mol"
+failure_log_uri: "logs/docking_failure.log"
+failure_log_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

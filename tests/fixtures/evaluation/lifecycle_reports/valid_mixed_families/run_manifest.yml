@@ -1,0 +1,32 @@
+schema_version: "1"
+contract_version: "1.0.0"
+role: "generation_run_manifest"
+job_id: "valid_mixed_families"
+request_id: "eval-test-req"
+checkpoint_ref: null
+accepted_request_sample_count: 8
+attempted_sample_count: 7
+sampling_system_failure_count: 1
+result_count: 7
+artifacts:
+  request:
+    uri: "request.normalized.yml"
+    sha256: "55da5fcb0562d7cbff86a8ad165d71f88d7a012fc7cb4c6233960fe5e6a457a2"
+    format: "yml"
+    schema_version: "1"
+    role: "request"
+    bytes: 90
+  results:
+    uri: "results.jsonl"
+    sha256: "781e076dfb00bfdeb6189914fecc4f9039dc575ec1c0fe2d38993a8c93e241ba"
+    format: "jsonl"
+    schema_version: "1"
+    role: "results"
+    bytes: 11945
+  sampling_system_failures:
+    uri: "sampling_system_failures.jsonl"
+    sha256: "c2286ca5c4489f75c1ab7fdd77a111a38b723202ccbd8dc1bb1574189bfae0c7"
+    format: "jsonl"
+    schema_version: "1"
+    role: "sampling_system_failures"
+    bytes: 349

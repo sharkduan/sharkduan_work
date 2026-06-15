@@ -375,6 +375,72 @@ class EvaluationSummary:
             )
 
 
+# -- Docking protocol manifest types (Task 32) --
+
+
+@dataclass(frozen=True)
+class ReceptorPreparation:
+    tool_name: str = ""
+    tool_version: str = ""
+    input_structure_uri: str = ""
+    input_structure_sha256: str = ""
+    output_receptor_uri: str = ""
+    output_receptor_sha256: str = ""
+    pH_or_protonation_policy: str = ""
+    water_policy: str = "keep"
+    cofactor_policy: str = "keep"
+    metal_policy: str = "keep"
+
+
+@dataclass(frozen=True)
+class LigandPreparation:
+    tool_name: str = ""
+    tool_version: str = ""
+    input_ligand_uri: str = ""
+    input_ligand_sha256: str = ""
+    charge_model: str = ""
+    protonation_policy: str = ""
+
+
+@dataclass(frozen=True)
+class CovalentConstraint:
+    representation: str = "other"
+    target_atom_identity: str = ""
+    ligand_atom_identity: str = ""
+    constraint_parameters: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DockingSearchRegion:
+    center: tuple[float, ...] = (0.0, 0.0, 0.0)
+    size: tuple[float, ...] = (0.0, 0.0, 0.0)
+    unit: str = "angstrom"
+
+
+@dataclass(frozen=True)
+class PoseSelection:
+    ranking_rule: str = "best_score"
+    score_unit: str = ""
+
+
+@dataclass(frozen=True)
+class DockingProtocolManifest:
+    docking_protocol_id: str = ""
+    engine_name: str = ""
+    engine_version: str = ""
+    engine_build_hash: str = ""
+    full_config_uri: str = ""
+    full_config_sha256: str = ""
+    random_seed: Optional[int] = None
+    receptor_preparation: ReceptorPreparation = field(default_factory=ReceptorPreparation)
+    ligand_preparation: LigandPreparation = field(default_factory=LigandPreparation)
+    covalent_constraint: CovalentConstraint = field(default_factory=CovalentConstraint)
+    search_region: DockingSearchRegion = field(default_factory=DockingSearchRegion)
+    pose_selection: PoseSelection = field(default_factory=PoseSelection)
+    failure_log_uri: str = ""
+    failure_log_sha256: str = ""
+
+
 # Task 17+ model / training / inference / evaluation types
 
 

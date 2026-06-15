@@ -119,37 +119,29 @@ def load_generation_run(manifest: Path) -> ContractEnvelope[GenerationRunManifes
     )
 
 
+def load_validated_results(manifest: Path) -> list[CovalentGenerationResult]:
+    """Load a generation-run manifest and return fully validated results.
+
+    Preserves all Task 30 validation: manifest parsing, artifact ref
+    checks, checksum checks, JSONL schema checks, failures JSONL
+    validation, manifest count checks, decode_result_row(), and
+    validate_generation_result().
+
+    Never exposes raw rows.  Does not produce denominator equations.
+    """
+    from covalent_design.contracts.types import CovalentGenerationResult
+
+    decoded, _ = _load_and_validate_results(manifest)
+    return decoded
+
+
 def summarize_results(manifest: Path) -> EvaluationSummary:
     """Load a generation run and compute its EvaluationSummary.
 
     This API has no write side effect. Use ``write_evaluation_summary`` to
     persist the result. The CLI composes the two operations.
     """
-    manifest = Path(manifest)
-    envelope = load_generation_run(manifest)
-    run = envelope.payload
-    root = manifest.parent
-
-    results_rows = _read_results_jsonl(root, run)
-    _read_failures_jsonl(root, run)
-
-    if run.result_count != len(results_rows):
-        raise _error(
-            "EVALUATION_DENOMINATOR_RESULT_COUNT_MISMATCH",
-            f"manifest.result_count={run.result_count} but results JSONL has {len(results_rows)} rows",
-            "result_count",
-            details={"manifest_count": run.result_count, "actual_count": len(results_rows)},
-        )
-    if run.attempted_sample_count != len(results_rows):
-        raise _error(
-            "EVALUATION_DENOMINATOR_ATTEMPTED_COUNT_MISMATCH",
-            f"manifest.attempted_sample_count={run.attempted_sample_count} but results JSONL has {len(results_rows)} rows",
-            "attempted_sample_count",
-            details={"manifest_count": run.attempted_sample_count, "actual_count": len(results_rows)},
-        )
-
-    decoded = _decode_and_validate_results(results_rows)
-
+    decoded, run = _load_and_validate_results(manifest)
     summary = _count_lifecycle(decoded, run)
     _raise_receipt_error(check_denominators(summary))
     return summary
@@ -202,6 +194,44 @@ def write_evaluation_summary(summary: EvaluationSummary, path: Path) -> Artifact
         role="evaluation_summary",
         bytes=path.stat().st_size,
     )
+
+
+# ---------------------------------------------------------------------------
+# internal: load and validate (shared by summarize_results and
+# load_validated_results)
+# ---------------------------------------------------------------------------
+
+
+def _load_and_validate_results(
+    manifest: Path,
+) -> tuple[list[CovalentGenerationResult], GenerationRunManifest]:
+    from covalent_design.contracts.types import CovalentGenerationResult
+
+    manifest = Path(manifest)
+    envelope = load_generation_run(manifest)
+    run = envelope.payload
+    root = manifest.parent
+
+    results_rows = _read_results_jsonl(root, run)
+    _read_failures_jsonl(root, run)
+
+    if run.result_count != len(results_rows):
+        raise _error(
+            "EVALUATION_DENOMINATOR_RESULT_COUNT_MISMATCH",
+            f"manifest.result_count={run.result_count} but results JSONL has {len(results_rows)} rows",
+            "result_count",
+            details={"manifest_count": run.result_count, "actual_count": len(results_rows)},
+        )
+    if run.attempted_sample_count != len(results_rows):
+        raise _error(
+            "EVALUATION_DENOMINATOR_ATTEMPTED_COUNT_MISMATCH",
+            f"manifest.attempted_sample_count={run.attempted_sample_count} but results JSONL has {len(results_rows)} rows",
+            "attempted_sample_count",
+            details={"manifest_count": run.attempted_sample_count, "actual_count": len(results_rows)},
+        )
+
+    decoded = _decode_and_validate_results(results_rows)
+    return decoded, run
 
 
 # ---------------------------------------------------------------------------

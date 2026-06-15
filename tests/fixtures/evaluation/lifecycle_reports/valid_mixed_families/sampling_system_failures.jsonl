@@ -1,0 +1,1 @@
+{"contract_version":"1.0.0","failure_category":"oom","failure_timestamp":"2026-06-02T00:00:00Z","log_uri":"logs/oom_sample_7.log","message":"oom for sample 7","request_id":"eval-test-req","resource_snapshot":null,"retry_count":0,"sample_id":7,"schema_version":"1","traceback_hash":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}

@@ -37,6 +37,8 @@ lightning_logs/
 tensorboard/
 *.ckpt
 *.pdbqt
+!tests/fixtures/evaluation/docking_protocol/valid_manifest/output/
+!tests/fixtures/evaluation/docking_protocol/valid_manifest/output/receptor.pdbqt
 
 # Keep data directory structure, not generated or raw corpora.
 data/raw/**
@@ -54,6 +56,8 @@ data/reports/**
 
 # Logs and temporary files
 *.log
+!tests/fixtures/evaluation/docking_protocol/valid_manifest/logs/
+!tests/fixtures/evaluation/docking_protocol/valid_manifest/logs/docking_failure.log
 *.tmp
 *.temp
 tmp/

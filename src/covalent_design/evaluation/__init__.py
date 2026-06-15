@@ -1,17 +1,81 @@
-"""Evaluation package - Task 30 denominator accounting and result validation."""
+"""Evaluation package - Task 30 denominator accounting, Task 31 lifecycle reports, Task 32 docking protocol, Task 33 split reports."""
 
 from covalent_design.evaluation.denominator_accounting import (
     check_denominators,
     evaluation_summary_to_dict,
     load_generation_run,
+    load_validated_results,
     summarize_results,
     write_evaluation_summary,
 )
+from covalent_design.evaluation.docking_protocol import (
+    DockingScoreEligibleResult,
+    DockingScoreEligibleResultIndex,
+    build_docking_score_eligible_result_index,
+    docking_protocol_manifest_to_dict,
+    docking_score_eligible_result_index_to_dict,
+    load_docking_protocol_manifest,
+    validate_docking_protocol_manifest,
+    write_docking_score_eligible_result_index,
+)
+from covalent_design.evaluation.failure_modes import (
+    FROZEN_REASON_STAGE_MAP,
+    FailureModeReport,
+    build_failure_mode_report,
+    build_failure_mode_report_from_manifest,
+    failure_mode_report_to_dict,
+    write_failure_mode_report,
+)
+from covalent_design.evaluation.split_metrics import (
+    JoinedAssignment,
+    StratifiedEvaluationSummary,
+    build_stratified_evaluation_summary,
+    join_results_to_split_assignments,
+    load_leakage_report,
+    load_split_index,
+    stratified_evaluation_summary_to_dict,
+    summarize_split_results,
+    validate_leakage_report_for_evaluation,
+    validate_split_index_for_evaluation,
+    write_stratified_evaluation_summary,
+)
+from covalent_design.evaluation.validity_metrics import (
+    summarize_lifecycle_statuses,
+    validate_results_before_aggregation,
+)
 
 __all__ = [
+    "DockingScoreEligibleResult",
+    "DockingScoreEligibleResultIndex",
+    "FROZEN_REASON_STAGE_MAP",
+    "FailureModeReport",
+    "JoinedAssignment",
+    "StratifiedEvaluationSummary",
+    "build_docking_score_eligible_result_index",
+    "build_failure_mode_report",
+    "build_failure_mode_report_from_manifest",
+    "build_stratified_evaluation_summary",
     "check_denominators",
+    "docking_protocol_manifest_to_dict",
+    "docking_score_eligible_result_index_to_dict",
     "evaluation_summary_to_dict",
+    "failure_mode_report_to_dict",
+    "join_results_to_split_assignments",
+    "load_docking_protocol_manifest",
     "load_generation_run",
+    "load_leakage_report",
+    "load_split_index",
+    "load_validated_results",
+    "stratified_evaluation_summary_to_dict",
+    "summarize_lifecycle_statuses",
     "summarize_results",
+    "summarize_split_results",
+    "validate_docking_protocol_manifest",
+    "validate_leakage_report_for_evaluation",
+    "validate_results_before_aggregation",
+    "validate_split_index_for_evaluation",
+    "write_docking_score_eligible_result_index",
     "write_evaluation_summary",
+    "write_failure_mode_report",
+    "write_stratified_evaluation_summary",
 ]
