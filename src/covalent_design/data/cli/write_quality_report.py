@@ -12,6 +12,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from covalent_design.contracts.cli_errors import (
+    contract_error_to_cli_json,
+    write_cli_error_json,
+)
 from covalent_design.contracts.errors import exit_code_for_error
 from covalent_design.data.quality_report import write_quality_report
 
@@ -52,6 +56,13 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="out_path",
         help="Path to write the quality report JSON file.",
     )
+    parser.add_argument(
+        "--error-out",
+        type=Path,
+        default=None,
+        dest="error_out",
+        help="Path to write cli_error JSON on failure.",
+    )
     return parser
 
 
@@ -74,7 +85,14 @@ def main(argv: Optional[list[str]] = None) -> None:
     print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
 
     if not envelope.receipt.ok:
-        sys.exit(exit_code_for_error(envelope.receipt.errors[0]))
+        first_error = envelope.receipt.errors[0]
+        print(f"{first_error.code}: {first_error.message}", file=sys.stderr)
+        if args.error_out is not None and envelope.receipt.errors:
+            write_cli_error_json(
+                contract_error_to_cli_json(first_error),
+                args.error_out,
+            )
+        sys.exit(exit_code_for_error(first_error))
     sys.exit(0)
 
 

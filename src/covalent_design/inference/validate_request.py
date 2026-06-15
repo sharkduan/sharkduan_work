@@ -3,6 +3,7 @@
 Usage:
   python -m covalent_design.inference.validate_request --request <path>
   python -m covalent_design.inference.validate_request --request <path> --rules <path>
+  python -m covalent_design.inference.validate_request --request <path> --error-out <path>
 """
 
 from __future__ import annotations
@@ -11,12 +12,17 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import List, Optional
 
+from covalent_design.contracts.cli_errors import (
+    contract_error_to_cli_json,
+    write_cli_error_json,
+)
 from covalent_design.contracts.errors import ContractError, exit_code_for_error
 from covalent_design.inference.request_validation import validate_request_file
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(
         description="Validate a reactive-site generation request."
     )
@@ -31,6 +37,13 @@ def main(argv: list[str] | None = None) -> None:
         type=Path,
         default=None,
         help="Path to reaction family rule table YAML (default: repo default).",
+    )
+    parser.add_argument(
+        "--error-out",
+        type=Path,
+        default=None,
+        dest="error_out",
+        help="Path to write cli_error JSON on failure.",
     )
     args = parser.parse_args(argv)
 
@@ -58,6 +71,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0)
 
     except ContractError as exc:
+        print(f"{exc.code}: {exc.message}", file=sys.stderr)
         error_output = {
             "status": "error",
             "errors": [
@@ -71,6 +85,10 @@ def main(argv: list[str] | None = None) -> None:
         }
         json.dump(error_output, sys.stdout, indent=2, sort_keys=True, default=str)
         sys.stdout.write("\n")
+
+        if args.error_out is not None:
+            write_cli_error_json(contract_error_to_cli_json(exc), args.error_out)
+
         sys.exit(exit_code_for_error(exc))
 
 

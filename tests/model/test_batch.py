@@ -628,6 +628,12 @@ class ModelBatchContractErrorCodesTests(unittest.TestCase):
                 code=code, owner="model", message="test",
             )
             exit_code = exit_code_for_error(info)
+            if "VERSION" in code:
+                self.assertEqual(
+                    exit_code, 70,
+                    f"{code} should map to unsupported_version_or_incompatible_artifact (70)",
+                )
+                continue
             self.assertEqual(
                 exit_code, 40,
                 f"{code} should map to model_or_training_contract_violation (40)",
