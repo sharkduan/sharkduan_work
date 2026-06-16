@@ -1,0 +1,74 @@
+# covalent-design-v2 environment scaffold
+#
+# Task 37 boundary:
+# - This file is a scaffold, not a verified lock file.
+# - Do not run conda/mamba/pip install as part of Task 37.
+# - Do not treat any placeholder version below as source-verified.
+# - Source verification and lock output are Task 38 scope.
+#
+# ADR 0037 smoke profile vocabulary:
+# - lightweight: default CI and Windows-local health check.
+# - heavy: opt-in Linux/WSL2 heavy dependency path.
+# - cpu is not a v2 smoke profile name.
+#
+# Windows remains lightweight-only. Heavy dependencies must stay optional and
+# inactive until each version, API claim, and license is source-verified.
+
+name: covalent-design-v2
+
+channels:
+  - conda-forge
+  - defaults
+  # UNVERIFIED / Task 38: add only after official install sources are checked.
+  # - pytorch
+  # - nvidia
+  # - pyg
+
+dependencies:
+  # Python placeholder.
+  # UNVERIFIED / Task 38: source-verify exact Python version before lock output.
+  - python=3.10
+
+  # Tooling needed to support later editable install mode.
+  # UNVERIFIED / Task 38: source-verify package manager behavior before use.
+  - pip
+
+  # Project package install mode placeholder.
+  # Task 37 does not install the package from this file. The repository does
+  # not currently have pyproject.toml/setup.py, so this remains inactive until
+  # a later task defines the project package metadata.
+  # - pip:
+  #     - "-e ."
+
+  # Heavy optional dependency placeholders. Do not uncomment in Task 37.
+
+  # PyTorch / CUDA, UNVERIFIED / Task 38.
+  # Required later for tensor backend, PMDM adapter smoke, and GPU training.
+  # Official sources to verify: PyTorch install matrix and NVIDIA CUDA docs.
+  # - pytorch=<UNVERIFIED>
+  # - pytorch-cuda=<UNVERIFIED>
+  # - cuda-toolkit=<UNVERIFIED>
+
+  # RDKit, UNVERIFIED / Task 38.
+  # Required later only for heavy-profile chemistry adapters.
+  # Official source to verify: RDKit installation documentation.
+  # - rdkit=<UNVERIFIED>
+
+  # PMDM-related graph dependencies, UNVERIFIED / Task 38.
+  # Required later only for real PMDM adapter smoke.
+  # Official sources to verify: PMDM repository environment/license and PyG
+  # install matrix for the selected PyTorch/CUDA combination.
+  # - pytorch-scatter=<UNVERIFIED>
+  # - pytorch-sparse=<UNVERIFIED>
+  # - pytorch-cluster=<UNVERIFIED>
+  # - pytorch-geometric=<UNVERIFIED>
+
+  # PMDM / PocketFlow source checkouts, UNVERIFIED / Task 38.
+  # These are not default dependencies and are not installed by Task 37.
+  # - pip:
+  #     - "-e <PMDM_PATH>"
+  #     - "-e <POCKETFLOW_PATH>"
+
+  # Docking engine, NOT REQUIRED YET.
+  # Optional feasibility only; no engine is selected in Task 37.
+  # - <docking-engine>=<UNVERIFIED>

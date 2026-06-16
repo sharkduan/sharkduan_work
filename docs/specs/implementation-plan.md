@@ -1822,15 +1822,23 @@ python -m compileall -q scripts src
 
 **Acceptance criteria:**
 
-- CI runs compile checks and lightweight contract/fixture tests.
-- CI still blocks generated caches and large binary artifacts.
-- Heavy RDKit/CUDA/docking workflows remain out of default CI unless fixtures and runners are explicitly approved.
+- Default CI runs `python -m compileall -q scripts src`.
+- Default CI runs `python -m pytest tests/contracts tests/io tests/data tests/rules -q`.
+- Default CI runs `python -m pytest tests/ci -q` so CI policy and repository hygiene self-check.
+- Default CI runs `python -m pytest tests/cli -q` for lightweight structured-exit coverage.
+- Default CI excludes RDKit, CUDA, docking, training, inference, evaluation, PMDM, and PocketFlow.
+- CI installs only minimal dependencies (pytest only).
+- Repository hygiene blocks generated caches, large binaries, checkpoint/model-weight artifacts, and broad docking/log/raw-data artifacts.
+- Task 35 narrow fixture exceptions are exact and are not broadened: one zero-byte `.log`, one minimal `.pdbqt`, and YAML-only checkpoint metadata files under `tests/fixtures/training/checkpoints/`.
+- The project must not commit real data, real checkpoints, real model weights, or real docking outputs.
 
 **Verification:**
 
 ```bash
 python -m compileall -q scripts src
 pytest tests/contracts tests/io tests/data tests/rules -q
+pytest tests/ci -q
+pytest tests/cli -q
 ```
 
 ## Recommended Implementation Order
