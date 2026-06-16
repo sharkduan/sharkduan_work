@@ -47,10 +47,19 @@ conda activate pocketflow
 
 ## Local Checks
 
-Run the checks that mirror the current GitHub Actions workflow:
+Run the CI smoke checks that mirror the current GitHub Actions workflow:
 
 ```bash
 python -m compileall -q scripts src
+PYTHONPATH=src python -m pytest tests/contracts tests/io tests/data tests/rules -q
+PYTHONPATH=src python -m pytest tests/ci -q
+PYTHONPATH=src python -m pytest tests/cli -q
+```
+
+Before opening a PR, run the full local suites:
+
+```bash
+PYTHONPATH=src python -m pytest -q
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 

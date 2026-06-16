@@ -3,6 +3,7 @@
 Thumbs.db
 .idea/
 .vscode/
+prompts/
 
 # Python runtime artifacts
 __pycache__/
@@ -26,7 +27,11 @@ env/
 # Training, sampling, and experiment outputs
 checkpoints/
 !tests/fixtures/training/checkpoints/
-!tests/fixtures/training/checkpoints/**
+!tests/fixtures/training/checkpoints/__init__.py
+!tests/fixtures/training/checkpoints/valid_checkpoint.yml
+!tests/fixtures/training/checkpoints/minor_version_checkpoint.yml
+!tests/fixtures/training/checkpoints/major_version_checkpoint.yml
+!tests/fixtures/training/checkpoints/no_release_gate_checkpoint.yml
 ckpt/
 PocketFlow/ckpt/
 outputs/
@@ -36,6 +41,12 @@ wandb/
 lightning_logs/
 tensorboard/
 *.ckpt
+*.pt
+*.pth
+*.pkl
+*.npy
+*.npz
+*.safetensors
 *.pdbqt
 !tests/fixtures/evaluation/docking_protocol/valid_manifest/output/
 !tests/fixtures/evaluation/docking_protocol/valid_manifest/output/receptor.pdbqt

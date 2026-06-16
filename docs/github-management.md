@@ -26,10 +26,15 @@ The first CI layer is intentionally lightweight because the project depends on l
 Current required checks:
 
 - compile project-owned Python under `scripts` and `src`;
+- run targeted tests under `tests/contracts`, `tests/io`, `tests/data`, and `tests/rules`;
+- run `tests/ci` policy tests so the workflow and repository hygiene rules self-check;
+- run `tests/cli` structured-exit tests as part of the lightweight CLI gate;
 - validate required documentation exists;
 - validate ADR filename numbering;
 - block generated caches and large binary artifacts from the repository;
 - keep GitHub Actions dependencies updated with Dependabot.
+
+Default CI installs only minimal dependencies (pytest) and intentionally excludes RDKit, CUDA, docking, training, inference, evaluation, PMDM, and PocketFlow.
 
 Heavy checks such as CUDA training, docking, full conda environment solves, and benchmark evaluation should run as explicit experiment jobs or manual workflows once stable fixtures and runners exist.
 
@@ -54,6 +59,20 @@ Do not commit:
 - experiment logs.
 
 Large artifacts should live in external storage with enough metadata in the repository to reproduce or locate them.
+
+### Fixture Policy
+
+Test fixtures follow a minimal-commit policy documented in [`tests/fixtures/FIXTURE_POLICY.md`](../tests/fixtures/FIXTURE_POLICY.md). Only fixture files needed for deterministic contract validation are committed. Three narrow `.gitignore` exceptions exist for docking protocol manifest validation (a zero-byte `.log` and a minimal `.pdbqt`) and training checkpoint metadata (YAML-only, no `.pt` weights).
+
+Local cache/log artifacts (`__pycache__/`, `*.pyc`, `.pytest_cache/`) are cleaned and are not part of the committed fixture set.
+
+### Review And Prompt Artifacts
+
+`docs/reviews/` is project audit evidence and should be tracked when a review is used to authorize a gate, checkpoint, governance remediation, or task transition.
+
+`tests/ci/` and `tests/fixtures/FIXTURE_POLICY.md` are governance enforcement files and should be tracked with the CI and fixture-policy changes they validate.
+
+`prompts/` contains local agent orchestration prompts and is ignored by default. Force-add a prompt only when a task explicitly requires the exact agent instruction as reproducibility or audit evidence. Do not stage or delete prompt files automatically.
 
 ## ADR Policy
 

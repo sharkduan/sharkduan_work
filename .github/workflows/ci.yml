@@ -28,13 +28,26 @@ jobs:
         with:
           python-version: "3.9"
 
+      - name: Install minimal test dependencies
+        run: python -m pip install pytest
+
       - name: Compile project-owned Python
         run: python -m compileall -q scripts src
 
-      - name: Run lightweight unit tests
+      - name: Run targeted tests
         env:
           PYTHONPATH: src
-        run: python -m unittest discover -s tests -t . -v
+        run: python -m pytest tests/contracts tests/io tests/data tests/rules -q
+
+      - name: Run CI policy tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest tests/ci -q
+
+      - name: Run CLI exit-code tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest tests/cli -q
 
   repository-hygiene:
     name: Repository hygiene
@@ -51,19 +64,36 @@ jobs:
           from pathlib import Path
 
           tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
-          blocked_suffixes = {".pyc", ".pyo", ".ckpt"}
+          blocked_suffixes = {
+              ".pyc", ".pyo", ".ckpt", ".pt", ".pth", ".pkl",
+              ".npy", ".npz", ".safetensors", ".pdbqt", ".log",
+          }
           blocked_parts = {
               "__pycache__",
               ".pytest_cache",
+              ".mypy_cache",
+              ".ruff_cache",
               "wandb",
               "runs",
               "outputs",
               "checkpoints",
               "ckpt",
+              "lightning_logs",
+              "tensorboard",
+          }
+          allowlist = {
+              "tests/fixtures/evaluation/docking_protocol/valid_manifest/output/receptor.pdbqt",
+              "tests/fixtures/evaluation/docking_protocol/valid_manifest/logs/docking_failure.log",
+              "tests/fixtures/training/checkpoints/valid_checkpoint.yml",
+              "tests/fixtures/training/checkpoints/minor_version_checkpoint.yml",
+              "tests/fixtures/training/checkpoints/major_version_checkpoint.yml",
+              "tests/fixtures/training/checkpoints/no_release_gate_checkpoint.yml",
           }
           violations = []
 
           for name in tracked:
+              if name in allowlist:
+                  continue
               path = Path(name)
               if any(part in blocked_parts for part in path.parts):
                   violations.append(f"{name} is generated cache/output")
