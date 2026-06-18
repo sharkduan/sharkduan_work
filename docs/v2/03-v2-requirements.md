@@ -21,10 +21,21 @@ The only formal target in this plan is `v2-beta`. The plan uses internal checkpo
 ### Data Automation
 
 - Cover only CovalentInDB, CovPDB, and CovBinderInPDB.
-- Support automatic download when source access and license are verified.
-- Support manual raw-file staging when download is blocked or unreliable.
-- Require checksums, source URLs or manual-source notes, retrieval date, parser target, and license audit status.
-- Do not let `unknown` or `blocked` license status enter training.
+- Use user-provided local real data as the v2-beta mainline data acquisition path.
+- Use `D:\codex_work\data` as the local raw data root.
+- Support manual raw-file staging from the local data root.
+- Do not perform agent-managed network download of real source data by default.
+- Treat automatic download as a future optional capability or explicitly approved future task, not the current v2-beta default path.
+- Require checksums, source URLs or manual-source notes, retrieval date, parser target, local path, and license audit status.
+- Treat local files as untrusted until manifest, checksum, parser validation, license, and provenance checks pass.
+- Do not let `unknown` or `blocked` license status enter training.  For
+  `intake_mode = "manual"` data, `manual_exempt` is an accepted license
+  status that records the exemption without blocking training (ADR 0038).
+- `restricted` license status may enter training only when conditions are
+  recorded and satisfied, and those conditions remain reportable.
+- `manual_exempt` does not bypass manifest, checksum, parser target, local
+  path, source provenance, or license audit reference validation.
+- Do not commit real raw data to git.
 
 ### ETL And Family Readiness
 
@@ -64,6 +75,14 @@ The only formal target in this plan is `v2-beta`. The plan uses internal checkpo
 
 Noncovalent pretraining is experimental and non-blocking for v2-beta. It requires a separate license audit, label compatibility analysis, transfer hypothesis, ablation plan, and rejection criteria before implementation.
 
+## Governance Requirements
+
+- Task 37+ must keep the V1 task standard: one primary deliverable, explicit dependencies, checkable acceptance criteria, verification command, and phase checkpoint evidence.
+- ADRs are decision-scoped, not task-scoped. A task needs ADR coverage only when it depends on a hard-to-reverse cross-task decision.
+- ADR 0037 covers the V2 environment boundary, heavy dependency boundary, source-verification boundary, and `lightweight` / `heavy` smoke profile vocabulary.
+- `docs/v2/13-v2-task-adr-coverage.md` must identify which tasks are covered by ADR 0037, which inherit v1 ADRs, and which future conditions would trigger a new ADR.
+- No V2 implementation task may promote optional noncovalent pretraining, docking, or a non-PMDM baseline into a beta blocker without a future explicit decision record.
+
 ## Non-Goals
 
 - No new mainline data source beyond the three v1 sources.
@@ -78,7 +97,7 @@ Noncovalent pretraining is experimental and non-blocking for v2-beta. It require
 - V2 heavy environment can be created or fails with documented dependency reasons.
 - Smoke script reports all required dependency statuses.
 - License audit gates source use before training.
-- Data intake emits deterministic manifests for download or manual staging.
+- Data intake emits deterministic manifests for user-provided local real data and manual staging.
 - Family readiness report exists before training.
 - PMDM path or `non_pmdm_baseline` is explicit in manifests.
 - Training and sampling complete under the beta budget.
@@ -87,6 +106,7 @@ Noncovalent pretraining is experimental and non-blocking for v2-beta. It require
 ## Open Verification Items
 
 - Official source URLs and licenses for CovalentInDB, CovPDB, and CovBinderInPDB.
+- User-provided local raw data manifests, checksums, and provenance under `D:\codex_work\data`.
 - PMDM and PocketFlow license and compatibility status.
 - Exact PyTorch, CUDA, RDKit, PyG, and Conda/Mamba versions.
 - Docking engine choice, license, and runtime feasibility.

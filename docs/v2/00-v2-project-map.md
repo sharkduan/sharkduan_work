@@ -25,6 +25,8 @@ The files under `docs/v2/` are a planning overlay for Task 37 and later. They do
 
 ADR 0037 is the accepted authority for the v2 environment boundary and smoke profile vocabulary. `docs/specs/key-design-decisions.md` indexes that decision so implementers can find it from the canonical decision list.
 
+`docs/v2/13-v2-task-adr-coverage.md` is the V2 governance map from Task 37+ slices to accepted ADRs, key decisions, and future ADR triggers. It is the authority for why V2 does not create one ADR per task.
+
 ## V1 Capabilities
 
 V1 establishes a contract-complete scaffold:
@@ -64,8 +66,8 @@ V2-beta should extend these seams without breaking v1:
 
 - Real Linux/WSL2 Conda environment with CUDA-capable PyTorch, RDKit, and PMDM compatibility.
 - PMDM submodule/API smoke integration or clearly labeled non-PMDM PyTorch baseline.
-- Automatic data download and license audit for the three v1 sources.
-- Real ETL run over downloaded or user-provided raw files.
+- User-provided local real data under `D:\codex_work\data`, with manifest, checksum, license, and provenance gates.
+- Real ETL run over validated local raw files staged from the user-provided data root.
 - Family readiness gate for the six v1 residue-reaction families.
 - RDKit-backed basic chemical validity and scaffold checks.
 - Budget-controlled training and tuning sweep.
@@ -81,7 +83,7 @@ V2-beta should extend these seams without breaking v1:
 | CUDA | single-GPU training and smoke probes | no | yes | optional heavy runtime capability |
 | PMDM | preferred diffusion backbone | no | yes | adapter behind existing PMDM output vocabulary |
 | Docking engine | feasibility assessment only | no | optional/manual | not a v2-beta release gate unless later promoted |
-| External source download | three-source intake automation | no | yes/manual | license-audited source manifest seam |
+| User-provided local source data | local real data staging from `D:\codex_work\data` | no network | manual/local | manifest, checksum, parser validation, provenance, and license-audited source seam with ADR 0038 manual-exemption caveat |
 
 ## Non-Negotiable Boundaries
 
@@ -93,6 +95,13 @@ V2-beta should extend these seams without breaking v1:
 - Preserve anti-leakage message weight provenance.
 - Preserve lightweight default CI.
 - Preserve heavy v2 checks as opt-in/manual until dependencies are locked.
+- Preserve ADRs as decision records, not task records.
+- Preserve noncovalent pretraining as optional/non-blocking unless a later ADR promotes it.
+- Preserve the v2-beta data path as user-provided local real data. Agents must not manage network download of real source data by default.
+- Treat files under `D:\codex_work\data` as untrusted until manifest, checksum, parser, license, and provenance checks pass.  For
+  `intake_mode = "manual"` data with `license_status = "manual_exempt"`,
+  the license step records the exemption rather than blocking (ADR 0038).
+- Never commit real raw data, real model weights, or real docking outputs to git.
 
 ## Architecture Risks
 
@@ -100,6 +109,6 @@ V2-beta should extend these seams without breaking v1:
 - `contracts/types.py` remains large and may need later partitioning.
 - Family coverage may be uneven after real-source ingestion.
 - CUDA/PyTorch/RDKit version solving may be fragile.
-- Download availability and data licenses are not yet verified.
+- User-provided local data availability, checksums, source provenance, and data licenses are not yet verified.
 - Docking engine choice and licensing are unresolved.
 - Noncovalent pretraining remains speculative and out of v2-beta mainline.

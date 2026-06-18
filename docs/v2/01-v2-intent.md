@@ -33,7 +33,7 @@ Tasks 1-36 completed the v1 contract scaffold. The next bottleneck is no longer 
 - Primary environment: Linux/WSL2 plus Conda/Mamba and one CUDA GPU.
 - Windows role: lightweight checks only.
 - Data sources: only CovalentInDB, CovPDB, and CovBinderInPDB for v2-beta mainline.
-- Data acquisition: automatic download plus license audit in mainline, with manual raw-file fallback.
+- Data acquisition: user-provided local real data under `D:\codex_work\data`, staged manually with manifest, checksum, license, and provenance checks.
 - Dependency strategy: project-level `environment.yml` and smoke check script.
 - Backbone: real PMDM preferred; project PyTorch fallback allowed only as `non_pmdm_baseline`.
 - RDKit: required for basic chemical validity and scaffold/chemistry checks.
@@ -42,7 +42,9 @@ Tasks 1-36 completed the v1 contract scaffold. The next bottleneck is no longer 
 - Sampling: held-out split plus per-family stratified sampling.
 - Docking: feasibility gate first; not a required v2-beta release gate.
 - Delivery priority: pipeline stability first, model effect second.
-- License policy: strict source and dependency license audit.
+- License policy: strict source and dependency license audit, with ADR 0038
+  preserving a manual-mode `manual_exempt` record-and-pass exception while
+  keeping download-mode, `unknown`, and `blocked` gates strict.
 - Noncovalent pretraining: experimental research track, not v2-beta mainline.
 - Planning decisions: record as planning docs, not irreversible ADRs.
 
@@ -62,7 +64,8 @@ Tasks 1-36 completed the v1 contract scaffold. The next bottleneck is no longer 
 V2-beta is successful when a fresh Linux/WSL2 single-GPU environment can execute a documented heavy profile that proves:
 
 - dependencies solve and smoke checks pass,
-- source data or manual raw-file fallback is staged with license evidence,
+- source data or manual raw-file fallback is staged with license evidence or
+  an ADR 0038 manual exemption audit record,
 - ETL reports family-level readiness,
 - model training runs on the agreed backbone path,
 - sampling and evaluation produce deterministic, auditable outputs,

@@ -12,7 +12,7 @@ V2-beta changes are additive. Existing v1 contracts remain valid. Heavy dependen
 | Module | V2 delta | Boundary rule |
 | --- | --- | --- |
 | `contracts` | additive v2 manifest/report dataclasses | preserve v1 facade imports |
-| `data` | source download/staging, license audit, family readiness | no training logic |
+| `data` | local real data staging, source provenance, license audit, family readiness | no training logic and no agent-managed network download by default |
 | `rules` | no mainline rule authority change | rule table remains authoritative |
 | `model` | PyTorch/PMDM adapters behind v1 contracts | no raw dependency objects in serialized contracts |
 | `training` | real training loop and tuning manifests | no data download or ETL logic |
@@ -83,56 +83,155 @@ Misuse guard: unverified rows cannot be cited as implemented contracts and must 
 
 ### SourceLicenseAudit
 
-Purpose: source-level license and provenance decision for data intake.
+Purpose: source-level license and provenance decision for local real-data intake.
 
-Producer: Task 43 license gate. Consumer: conversion, training eligibility, release review.
+Implementation: `src/covalent_design/data/v2_license.py`
+
+Producer: Task 43 license gate via `audit_v2_training_eligibility()`. Consumer: training eligibility, release review, and consistency checks against conversion outputs. Task 43 may read Task 42 converted records only to verify preserved `license_audit_ref` and provenance references; it must not run conversion or raw parsers.
 
 Serialization: deterministic JSON. Artifact role: `source_license_audit`.
 
-Required fields:
+Input audit record fields:
 
 - `source_name`: enum `CovalentInDB`, `CovPDB`, or `CovBinderInPDB`.
-- `license_status`: enum `allowed`, `allowed_with_conditions`, `unknown`, or `blocked`.
-- `license_evidence_ref`: artifact ref or URL string.
-- `retrieval_url`: URL string or null for manual staging.
-- `retrieval_method`: enum `automatic`, `manual`, or `not_retrieved`.
-- `retrieved_at`: ISO-8601 timestamp or null.
-- `checksum`: `sha256:<hex>` or null.
-- `allowed_for_training`: boolean.
-- `blocking_reason`: string or null.
+- `intake_mode`: enum `download` or `manual`, copied from the validated source manifest.
+- `license_status`: enum `allowed`, `restricted`, `blocked`, `unknown`, or `manual_exempt`.
+- `license_evidence_ref`: artifact ref, URL string, or manual exemption audit record ref. For `manual_exempt`, this points to the audit record containing `license_status: "manual_exempt"` and does not require external third-party license evidence.
+- `restriction_conditions`: optional list of condition strings for `restricted`.
+- `restriction_conditions_satisfied`: boolean for `restricted`.
+- `block_reason`: optional text for `blocked`.
 
-Misuse guard: `unknown` and `blocked` must not enter training eligibility. `allowed_with_conditions` must preserve its conditions.
+Misuse guards:
+
+- `manual_exempt` is valid only with `intake_mode = "manual"`.
+- `manual_exempt` with `intake_mode = "download"` is a structured Task 43 error.
+- `manual_exempt` does not bypass manifest validation, checksum validation, parser target validation, local path provenance, source provenance, or required `license_audit_ref`.
+- `unknown` and `blocked` must not enter training eligibility.
+- `restricted` may enter training eligibility only when restriction conditions are recorded and satisfied, and those conditions must be preserved in downstream manifests and reports.
+- Training eligibility and family readiness reports must list `manual_exempt` separately from `allowed`.
+
+Task 43 API:
+
+- `load_source_license_audit(path)` loads deterministic JSON audit records.
+- `audit_v2_training_eligibility(staged_evidence, license_audits, converted_records=(), approved_local_data_roots=())` returns `ContractEnvelope[LicenseGateReport]`.
+- `LicenseGateReport` records `sources`, five-state `status_counts`, `training_eligible_count`, and `blocked_count`.
+- `LicenseGateSourceReport` records source name, intake mode, `license_audit_ref`, license status, eligibility, stable reason codes, checksum, manual path/source URL provenance, restricted conditions, and the `manual_exempt` notice when applicable.
+- `license_gate_report_to_dict(report)` emits deterministic JSON-compatible output.
+
+Structured error categories:
+
+- staging evidence invalid or missing
+- checksum/provenance/license audit reference missing
+- manual path outside approved local data root
+- missing audit evidence
+- unsupported license status
+- restricted conditions unsatisfied
+- blocked or unknown license status
+- `manual_exempt` on download intake
+- staged evidence versus converted output mismatches for `license_audit_ref`, checksum, local path provenance, or source provenance
 
 ### V2DataIntakeManifest
 
-Purpose: source download/manual staging manifest.
+Purpose: source-origin/manual staging manifest schema and validation (Task 40 IMPLEMENTED).
 
-Producer: Task 40/41 intake. Consumer: conversion and license audit.
+Implementation: `src/covalent_design/data/v2_manifests.py`
 
-Serialization: deterministic JSON. Artifact role: `v2_data_intake_manifest`.
+Producer: `validate_v2_data_intake_manifest()` / `v2_data_intake_manifest_from_dict()`. Consumer: conversion and license audit (Tasks 41-43).
+
+Serialization: deterministic JSON via `serialize_v2_data_intake_manifest()` (sorted keys, compact separators, `ensure_ascii=False`). Artifact role: `v2_data_intake_manifest`.
+
+Dataclass: `V2DataIntakeManifest` (frozen).
 
 Required fields:
 
-- `schema_version`: string.
-- `contract_version`: string.
-- `source_name`: enum `CovalentInDB`, `CovPDB`, or `CovBinderInPDB`.
-- `mode`: enum `automatic` or `manual`.
-- `local_path`: string or null.
-- `checksum`: `sha256:<hex>`.
-- `file_count`: integer.
-- `parser_name`: string.
-- `license_audit_ref`: artifact ref or null until Task 43.
-- `status`: enum `pending`, `staged`, `converted`, `unavailable`, `skipped`, or `error`.
+- `schema_version`: string. Code constant `SCHEMA_VERSION = "1.0.0"`.
+- `contract_version`: string. Code constant `CONTRACT_VERSION = "v2-beta"`.
+- `source_name`: enum `CovalentInDB`, `CovPDB`, `CovBinderInPDB`.
+- `intake_mode`: enum `download`, `manual`. In v2-beta, `download` records user-provided local data that originated from a source URL; it does not authorize an agent to perform network download.
+- `checksum`: 64-character lowercase SHA-256 hex digest.
+- `checksum_algorithm`: enum `sha256` only.
+- `parser_target`: enum `covalentin_db`, `covpdb`, `covbinder_in_pdb`. Must match source_name per `SOURCE_TO_PARSER_TARGET` mapping.
+- `retrieval_date`: string.
+- `license_audit_ref`: string.
+- `access_notes`: string.
 
-Optional fields:
+Optional mode-specific fields:
 
-- `source_url`: URL string.
-- `retrieval_date`: ISO-8601 date.
-- `manual_reason`: string.
-- `error_code`: string.
-- `error_message`: string.
+- `source_url`: string or null. Required when `intake_mode = download`.
+- `manual_path`: string or null. Required when `intake_mode = manual`.
 
-Misuse guard: download attempts are disabled unless explicitly requested. Missing checksum fails validation.
+Validation returns `ContractEnvelope[Optional[V2DataIntakeManifest]]` with structured `V2_MANIFEST_*` error codes (owner `data`).
+
+Error codes: `V2_MANIFEST_UNREADABLE`, `V2_MANIFEST_INVALID_JSON`, `V2_MANIFEST_ROOT_NOT_OBJECT`, `V2_MANIFEST_MISSING_REQUIRED_FIELD`, `V2_MANIFEST_FORBIDDEN_FIELD`, `V2_MANIFEST_UNKNOWN_SOURCE_NAME`, `V2_MANIFEST_UNKNOWN_INTAKE_MODE`, `V2_MANIFEST_MANUAL_PATH_REQUIRED`, `V2_MANIFEST_SOURCE_URL_REQUIRED`, `V2_MANIFEST_UNSUPPORTED_CHECKSUM_ALGORITHM`, `V2_MANIFEST_CHECKSUM_INVALID`, `V2_MANIFEST_UNKNOWN_PARSER_TARGET`, `V2_MANIFEST_SOURCE_PARSER_MISMATCH`.
+
+Forbidden fields (rejected with `V2_MANIFEST_FORBIDDEN_FIELD`, belong to later tasks): `conversion_status`, `license_eligibility`, `license_status`, `staging_status`, `training_artifacts`, `training_eligible`, `training_split`.
+
+Scope exclusion: Task 40 does not download, stage, convert, inspect raw data, decide license eligibility, produce training artifacts, or import heavy dependencies. No network access during validation.
+
+Misuse guard: missing checksum fails validation with `V2_MANIFEST_MISSING_REQUIRED_FIELD`. Mismatched source/parser fails with `V2_MANIFEST_SOURCE_PARSER_MISMATCH`.
+
+Verification (2026-06-16): `python -m pytest tests/data/test_v2_manifests.py -q` — 29 passed.
+
+### V2Conversion
+
+Purpose: convert Task 41 validated local staged inputs (checksum-verified manual files) to v1-compatible `SourceIngestRecord` records (Task 42 IMPLEMENTED).
+
+Implementation: `src/covalent_design/data/v2_conversion.py`
+
+Producer: `convert_staged_source()` / `convert_staged_manifest()`. Consumer: v1 ETL pipelines (`normalize_linkages`, `normalize_with_identity_resolution`), Task 43 license gate.
+
+Public API:
+
+- `convert_staged_source(staging_envelope: ContractEnvelope[V2StagingSummary], *, reverify_checksum: bool = True) → ContractEnvelope[tuple[SourceIngestRecord, ...]]`
+- `convert_staged_manifest(manifest_path: Path, *, reverify_checksum: bool = True) → ContractEnvelope[tuple[SourceIngestRecord, ...]]`
+
+Conversion contract:
+
+- Only `status == "checksum_verified"` (manual local file) is convertible.
+- `pending_download` returns `V2_CONVERSION_PENDING_DOWNLOAD` — no placeholder records.
+- Failed staging envelope returns `V2_CONVERSION_STAGING_FAILED`.
+- Forged or non-Task-41 staging envelopes return `V2_CONVERSION_INVALID_STAGING_EVIDENCE`.
+- Optional checksum re-verification (`reverify_checksum=True` by default): re-reads the file and recomputes SHA-256; mismatch → `V2_CONVERSION_CHECKSUM_MISMATCH`.
+- Zero network access enforced by tests.
+- No filesystem artifacts written during conversion (purely in-memory).
+
+Supported parser targets: `covalentin_db` only (Task 42 scope). `covpdb` and `covbinder_in_pdb` return `V2_CONVERSION_UNSUPPORTED_PARSER`.
+
+TSV parser required columns: `pdb_id`, `uniprot_id`, `residue`, `residue_number`, `ligand`, `ligand_name`, `bond_type`, `warhead_type`.
+
+Output: `ContractEnvelope[tuple[SourceIngestRecord, ...]]` where each record carries:
+
+- `source_database`, `source_version`, `source_record_id`, `row_index`
+- `raw_file_path`, `raw_manifest_file`, `raw_file_sha256` — provenance
+- `lineage` (dict) — includes `license_audit_ref` and `source_url` when available
+- `metadata` (dict) — includes `pdb_id`, `license_audit_ref`, `source_url`
+- `protein` (dict), `ligand` (dict), `linkage` (dict)
+- `source_lineage` (`SourceRecordLineage`)
+- `target_atom_identity` (`ProteinAtomIdentity`), `ligand_atom_identity` (`LigandAtomIdentity`)
+- `artifacts` is always empty `()` — artifact refs are Task 43+ scope
+
+Error codes (all `owner = "data"`, `V2_CONVERSION_*` prefix):
+
+- `V2_CONVERSION_STAGING_FAILED`
+- `V2_CONVERSION_INVALID_STAGING_EVIDENCE`
+- `V2_CONVERSION_PAYLOAD_MISSING`
+- `V2_CONVERSION_PENDING_DOWNLOAD`
+- `V2_CONVERSION_UNEXPECTED_STATUS`
+- `V2_CONVERSION_MANUAL_PATH_MISSING`
+- `V2_CONVERSION_FILE_NOT_FOUND`
+- `V2_CONVERSION_UNSUPPORTED_PARSER`
+- `V2_CONVERSION_CHECKSUM_MISMATCH`
+- `V2_CONVERSION_FILE_UNREADABLE`
+- `V2_CONVERSION_MISSING_COLUMNS`
+- `V2_CONVERSION_ROW_PARSE_ERROR`
+
+Forbidden output fields (belong to Task 43+): `training_eligible`, `training_split`, `license_eligibility`, `license_status`, `split_assignment`, `model_artifacts`, `inference_artifacts`.
+
+Scope exclusion: Task 42 does not access network, download data, decide license eligibility, decide training eligibility, produce training artifacts, produce family readiness reports, produce split assignments, or write filesystem artifacts. Task 43 owns training eligibility.
+
+Deterministic: same staging input produces identical `SourceIngestRecord` tuple. Output is JSON-serializable via `dataclasses.asdict()`.
+
+Verification (2026-06-16): `python -m pytest tests/data/test_v2_conversion.py -q`.
 
 ### FamilyReadinessReport
 
@@ -180,12 +279,54 @@ V2 artifacts should use deterministic JSON/YAML with:
 - source references,
 - dependency/environment references where relevant.
 
+## Chemistry Interfaces
+
+### RDKit Molecule Normalization Report
+
+Purpose: heavy-profile molecule parsing and normalization adapter for Task 44.
+
+Implementation: `src/covalent_design/chem/rdkit_normalize.py`
+
+Public API:
+
+- `normalize_molecule(text, input_format="smiles") -> MoleculeNormalizationResult`
+- `result_to_dict(result) -> dict[str, object]`
+
+Supported input formats:
+
+- `smiles`
+- `molblock`
+
+Output boundary:
+
+- `MoleculeNormalizationResult` is project-owned serializable data.
+- The public result includes status, input format, RDKit availability, canonical normalized SMILES when available, atom/bond counts, formal charge, sanitize status, valence problem count, diagnostics, and structured error fields.
+- Raw RDKit `Mol`, `Atom`, `Bond`, or chemistry problem objects must not cross the package seam.
+
+Environment behavior:
+
+- Module import is lightweight-safe and must not hard-import RDKit.
+- When RDKit is unavailable, normalization returns `status = "unavailable"` with `RDKIT_NORMALIZE_RDKIT_UNAVAILABLE`.
+- In a heavy environment with RDKit available, the adapter performs real RDKit parsing, sanitization, canonical SMILES generation, and valence-related diagnostics.
+
+Structured failure codes:
+
+- `RDKIT_NORMALIZE_RDKIT_UNAVAILABLE`
+- `RDKIT_NORMALIZE_EMPTY_INPUT`
+- `RDKIT_NORMALIZE_UNSUPPORTED_FORMAT`
+- `RDKIT_NORMALIZE_PARSE_FAILED`
+- `RDKIT_NORMALIZE_SANITIZE_FAILED`
+
+Scope exclusions:
+
+- Task 44 does not implement scaffold keys, descriptors, drug-likeness, mmCIF writing, PyTorch tensor conversion, model forward, training, inference, evaluation, or real-data directory access.
+
 ## CLI Boundaries
 
 Future v2 CLIs should be thin wrappers around typed Python interfaces. Planned families:
 
 - environment smoke,
-- source download/staging,
+- local real-data staging,
 - license audit,
 - real ETL orchestration,
 - RDKit chemistry reports,
@@ -204,7 +345,7 @@ V2 errors should use structured codes and never silently continue on:
 
 - dependency unavailable,
 - source license unknown or blocked,
-- download checksum mismatch,
+- local data checksum mismatch,
 - schema normalization failure,
 - family readiness blocked,
 - PMDM unavailable without explicit fallback,

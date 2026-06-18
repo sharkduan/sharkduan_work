@@ -12,6 +12,16 @@ Each task has one primary goal and should fit in one focused session. Heavy depe
 
 ADR 0037 is the authority for v2 environment boundaries, heavyweight optional dependencies, and the frozen `lightweight` / `heavy` smoke profile vocabulary. V2 docs are planning overlays until their tasks land; implemented v2 decisions must be synchronized back into canonical specs during or after the relevant implementation task.
 
+V2 follows the v1 task-slicing standard:
+
+- one task owns one primary deliverable,
+- task dependencies are explicit and ordered by prerequisite evidence,
+- every task has checkable acceptance criteria and a verification command,
+- every phase ends in a checkpoint gate,
+- implementation details do not get ADRs unless they are hard-to-reverse cross-task decisions.
+
+The Task-to-decision coverage matrix lives in `docs/v2/13-v2-task-adr-coverage.md`. That document explains why ADRs are decision-scoped rather than task-scoped.
+
 ## Phase V2-A: Environment And Dependency Foundation
 
 ### Task 37: Finalize V2 Environment Policy And Scaffold
@@ -53,6 +63,7 @@ python -m compileall -q scripts src
 
 - `docs/v2/04-v2-dependency-and-environment-spec.md`
 - `docs/v2/dependency-source-verification.md`
+- `docs/reviews/task38-dependency-source-verification-review-2026-06-16.md`
 - optional `environment.lock.yml` or documented lock output
 
 **Dependencies:** Task 37.
@@ -68,11 +79,15 @@ python -m compileall -q scripts src
 **Verification:**
 
 ```powershell
+# Structured source-verification checks (no git diff)
 rg -n "dependency / package|official source URL|license status|verification date|owning task" docs/v2/dependency-source-verification.md
+rg -n "^\\| (Python|Conda/Mamba|pip|PyTorch|CUDA|RDKit|PMDM|pytorch-scatter|pytorch-sparse|pytorch-cluster|pytorch-geometric|pytorch-spline-conv|PocketFlow|Project package install mode|Docking engine) \\|" docs/v2/dependency-source-verification.md
 rg -n "verified|unverified|blocked|not required yet" docs/v2/dependency-source-verification.md
+rg -n "lock|Lock|LOCK|environment.lock" docs/v2/dependency-source-verification.md docs/v2/04-v2-dependency-and-environment-spec.md
+rg -n "Task 39 may NOT start|PMDM|blocked|lock workflow" docs/reviews/task38-dependency-source-verification-review-2026-06-16.md
 ```
 
-**Notes:** Do not cite blogs, StackOverflow, or AI summaries as authority.
+**Notes:** Do not cite blogs, StackOverflow, or AI summaries as authority. Task 39 must not start while PMDM is `blocked` or while PyTorch/CUDA/RDKit/PMDM version compatibility remains unverified, unless a later explicit waiver narrows Task 39 to non-importing structured-unavailable probes.
 
 ### Task 39: Add RDKit/PyTorch/CUDA Smoke Probe Spec
 
@@ -89,9 +104,17 @@ rg -n "verified|unverified|blocked|not required yet" docs/v2/dependency-source-v
 **Acceptance:**
 
 - Lightweight probe passes without RDKit/PyTorch installed.
-- Heavy probe reports PyTorch import, CUDA availability, RDKit import, PMDM path/import, and project import.
+- Heavy probe reports PyTorch import, CUDA availability, RDKit import, PMDM path/import, PocketFlow import, docking availability, and project import.
 - Probe output is deterministic JSON.
 - Missing heavy dependency returns non-zero only in heavy mode.
+- Dependency status enum is frozen as `available`/`unavailable`/`not_checked`/`failed`.
+- Lightweight profile checks project import only; all six heavy deps (cuda, docking, pmdm, pocketflow, pytorch, rdkit) marked `not_checked`.
+- Heavy profile returns structured `unavailable` with exit code 2 when dependencies are missing; exit code 0 when all available.
+- Invalid profile (including `cpu`) returns exit code 3 with `exit_reason: unsupported_profile` and `supported_profiles: ["lightweight", "heavy"]`.
+- CUDA is reported as `not_checked` when PyTorch is unavailable (not `unavailable` or `failed`).
+- PMDM is reported as `unavailable` with `reason: license_unknown` and `import_attempted: false`; no PMDM import is attempted while license is unknown.
+- No installs, downloads, environment solves, or adapter code are executed by the smoke probe.
+- All tests in `tests/v2/test_smoke_check.py` pass.
 
 **Verification:**
 
@@ -100,6 +123,13 @@ $env:PYTHONPATH='src'
 python -m pytest tests/v2/test_smoke_check.py -q
 python scripts/v2_smoke_check.py --profile lightweight
 ```
+
+**Verified on 2026-06-16 (this host, Windows 11, no heavy deps):**
+
+- `pytest tests/v2/test_smoke_check.py -q` — all tests passed
+- `python scripts/v2_smoke_check.py --profile lightweight` — exit 0
+- `python scripts/v2_smoke_check.py --profile heavy` — exit 2 (structured, `exit_reason: heavy_dependency_unavailable`)
+- `python scripts/v2_smoke_check.py --profile cpu` — exit 3 (structured, `exit_reason: unsupported_profile`)
 
 **Notes:** Heavy profile may be manual until the environment is available.
 
@@ -114,26 +144,38 @@ python scripts/v2_smoke_check.py --profile lightweight
 - lightweight smoke passes,
 - heavy smoke behavior is documented.
 
-## Phase V2-B: Data Automation
+## Phase V2-B: Data Intake And License Gate
 
-### Task 40: Design Real Data Intake Manifest V2
+### Task 40: Design Real Data Intake Manifest V2 (IMPLEMENTED)
 
-**Goal:** Define the source manifest schema for automatic and manual raw data intake.
+**Goal:** Define the source manifest schema and validation for download and manual raw data intake.
 
 **Files/modules:**
 
 - `src/covalent_design/data/v2_manifests.py`
 - `tests/data/test_v2_manifests.py`
+- `tests/fixtures/v2/data_manifests/`
 - `docs/v2/05-v2-data-automation-spec.md`
+- `docs/v2/09-v2-interface-and-contract-changes.md`
+- `docs/reviews/task40-v2-data-intake-manifest-review-2026-06-16.md`
 
 **Dependencies:** Checkpoint V2-A.
 
 **Acceptance:**
 
-- Manifest supports CovalentInDB, CovPDB, and CovBinderInPDB only.
-- Manifest records mode, source URL or manual path, checksum, parser target, retrieval date, and license audit ref.
-- Unknown source names fail.
-- Missing checksum fails.
+- Manifest supports `CovalentInDB`, `CovPDB`, and `CovBinderInPDB` only.
+- Intake modes are exactly `download` and `manual`.
+- Required fields: `schema_version`, `contract_version`, `source_name`, `intake_mode`, `checksum`, `checksum_algorithm`, `parser_target`, `retrieval_date`, `license_audit_ref`, `access_notes`.
+- Mode-specific fields: `source_url` required for `download`; `manual_path` required for `manual`.
+- `checksum_algorithm` only `sha256`; `checksum` is 64-character lowercase hex digest.
+- `parser_target` must match `source_name` (enforced by `SOURCE_TO_PARSER_TARGET` mapping).
+- Unknown source names, intake modes, parser targets, or checksum algorithms fail with structured `V2_MANIFEST_*` errors.
+- Missing required fields, missing mode-specific fields, and checksum format violations each produce distinct error codes.
+- Validation returns `ContractEnvelope[Optional[V2DataIntakeManifest]]` with machine-readable error codes (owner `data`).
+- Serialization is deterministic (sorted keys, compact separators, `ensure_ascii=False`).
+- Later-task fields (`conversion_status`, `license_eligibility`, `license_status`, `staging_status`, `training_artifacts`, `training_eligible`, `training_split`) are rejected with `V2_MANIFEST_FORBIDDEN_FIELD`.
+- No download, staging, conversion, license eligibility, training, or heavy dependency import is performed.
+- 29 tests pass; committed fixtures cover all three sources in both download and manual modes plus negative cases.
 
 **Verification:**
 
@@ -142,11 +184,13 @@ $env:PYTHONPATH='src'
 python -m pytest tests/data/test_v2_manifests.py -q
 ```
 
-**Notes:** No real download yet.
+**Verified on 2026-06-16:** `pytest tests/data/test_v2_manifests.py -q` — 29 passed.
 
-### Task 41: Add Source Download And Manual Staging Fixtures
+**Notes:** No download or staging in this task. Task 41 (staging) and Task 43 (license audit) build on this manifest.
 
-**Goal:** Implement fixture-first download/manual staging behavior.
+### Task 41: Add Local Real Data Manual Staging Fixtures (IMPLEMENTED)
+
+**Goal:** Implement fixture-first local manual staging behavior without performing network downloads or treating local files as trusted.
 
 **Files/modules:**
 
@@ -154,44 +198,68 @@ python -m pytest tests/data/test_v2_manifests.py -q
 - `src/covalent_design/data/cli/v2_stage_source.py`
 - `tests/data/test_v2_intake.py`
 - `tests/fixtures/v2/data_intake/`
+- `docs/v2/05-v2-data-automation-spec.md`
 
-**Dependencies:** Tasks 40, 41.
+**Dependencies:** Task 40.
 
 **Acceptance:**
 
-- Manual staging fixture validates path and checksum.
-- Download mode can be represented without network in tests.
-- Download attempts are disabled unless explicitly requested.
-- Output manifests are deterministic.
+- Manual staging fixture validates manifest shape, local path, checksum metadata, source name, parser target, provenance, and license audit reference.
+- Download-mode manifests may be represented only as source-origin metadata for user-provided local files, with source URL, intended output name or source artifact id, expected checksum, checksum algorithm, retrieval metadata placeholder, and license audit reference.
+- Agent-managed download attempts are disabled by default.
+- Any attempt to perform a real network download in Task 41 returns a structured error.
+- No network access is performed in default tests or default CLI verification.
+- The v2-beta real-data path is user-provided local data under `D:\codex_work\data`.
+- Local files remain untrusted until manifest, checksum, parser target, license audit reference, and provenance checks pass.
+- Real raw data must not be copied into tracked fixtures or committed to git.
+- Output summaries are deterministic.
+- No conversion output, license eligibility decision, or training artifact is produced.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/data/test_v2_intake.py -q
-python -m covalent_design.data.cli.v2_stage_source --manifest tests/fixtures/v2/data_intake/manual/source_manifest.json
+python -m covalent_design.data.cli.v2_stage_source --manifest tests/fixtures/v2/data_intake/download/source_manifest.json
+rg -n "Local Real Data Policy|D:\\codex_work\\data|No Agent Network Download Rule|Git Tracking Rule" docs/v2/05-v2-data-automation-spec.md
 ```
 
-**Notes:** Real network download requires separate approval and license evidence.
+**Verified on 2026-06-16:** `pytest tests/data/test_v2_intake.py -q` — 19 passed. CLI exits 0 for valid download-mode manifest representation, non-zero with structured JSON for unknown source.
 
-### Task 42: Design Data Conversion Pipeline V2
+**Notes:** Task 41 is not permission for agents to download real source data. `intake_mode = "download"` records source-origin metadata for a user-provided local file only. Automatic download is a future optional capability that would require a separate approved task, explicit user approval, and license evidence.
 
-**Goal:** Connect v2 intake manifests to v1-compatible ETL inputs.
+### Task 42: Design Data Conversion Pipeline V2 (IMPLEMENTED)
+
+**Goal:** Convert validated local staged inputs to v1-compatible ETL inputs.
 
 **Files/modules:**
 
 - `src/covalent_design/data/v2_conversion.py`
 - `tests/data/test_v2_conversion.py`
+- `tests/fixtures/v2/data_conversion/`
 - `docs/v2/05-v2-data-automation-spec.md`
+- `docs/v2/09-v2-interface-and-contract-changes.md`
 
-**Dependencies:** Tasks 40, 41.
+**Dependencies:** Tasks 40, 41, and Task 42 preserved provenance references.
 
 **Acceptance:**
 
-- Conversion output can feed existing v1 ingestion/normalization.
-- Source-specific records retain provenance.
-- Schema normalization failures are structured.
-- No training artifacts are produced.
+- Conversion consumes only Task 41 validated local staged inputs (`status == checksum_verified`), not remote sources.
+- `pending_download` is rejected with structured `V2_CONVERSION_PENDING_DOWNLOAD` error; no placeholder records.
+- Conversion output (`tuple[SourceIngestRecord, ...]`) feeds existing v1 `normalize_linkages()` and `normalize_with_identity_resolution()`.
+- Source-specific records retain local path provenance (`raw_file_path`, `raw_manifest_file`), checksum reference (`raw_file_sha256`), source URL provenance when available, and license audit reference.
+- Optional checksum re-verification (`reverify_checksum=True` by default) re-reads the file and recomputes SHA-256.
+- Task 42 supports only `covalentin_db` parser target; `covpdb` and `covbinder_in_pdb` return `V2_CONVERSION_UNSUPPORTED_PARSER`.
+- TSV parser validates required columns (`pdb_id`, `uniprot_id`, `residue`, `residue_number`, `ligand`, `ligand_name`, `bond_type`, `warhead_type`); missing columns fail with `V2_CONVERSION_MISSING_COLUMNS`.
+- Individual row parse failures use `V2_CONVERSION_ROW_PARSE_ERROR` with `row_index`/`missing_fields` details; valid rows are still converted.
+- Empty files and header-only files return empty tuple without error.
+- Residue field parsing (`CYS145` → `CYS`, `145`) is validated; unparseable residues fail the row.
+- 12 structured `V2_CONVERSION_*` error codes, all with `owner = "data"`, including forged-envelope rejection via `V2_CONVERSION_INVALID_STAGING_EVIDENCE`.
+- Zero network access — enforced by socket/urllib monkeypatch in tests.
+- No filesystem artifacts written during conversion (purely in-memory).
+- No training artifacts, license eligibility decisions, or split assignments are produced — Task 43 owns training eligibility.
+- Deterministic: same staging input produces identical `SourceIngestRecord` tuple.
+- Output is JSON-serializable via `dataclasses.asdict()`.
 
 **Verification:**
 
@@ -200,11 +268,14 @@ $env:PYTHONPATH='src'
 python -m pytest tests/data/test_v2_conversion.py -q
 ```
 
-**Notes:** Keep source parsing separate from training.
+**Verified on 2026-06-16:** `pytest tests/data/test_v2_conversion.py -q` — tests pass.
+
+**Notes:** Keep source parsing separate from training. Task 42 must not perform network download and must not treat local files as trusted without Task 41 staging evidence. `pending_download` is not convertible — download the source first, then re-stage with manual intake mode. Task 42 produces `SourceIngestRecord` objects that feed directly into v1 `normalize_linkages()` and `normalize_with_identity_resolution()`.
 
 ### Task 43: Design License And Provenance Audit Gate
 
-**Goal:** Block training use of unlicensed or unknown source data.
+**Goal:** Block training use of unlicensed or unknown source data, with a
+soft exemption for manually-staged data (ADR 0038).
 
 **Files/modules:**
 
@@ -212,23 +283,43 @@ python -m pytest tests/data/test_v2_conversion.py -q
 - `tests/data/test_v2_license.py`
 - `docs/v2/05-v2-data-automation-spec.md`
 
-**Dependencies:** Task 40.
+**Dependencies:** Tasks 40, 41; Task 42 output may be read only for preserved-reference cross-validation.
 
 **Acceptance:**
 
-- License statuses are `allowed`, `allowed_with_conditions`, `unknown`, `blocked`.
-- `unknown` and `blocked` fail training eligibility.
-- `allowed_with_conditions` preserves conditions in manifests.
+- License statuses are exactly `allowed`, `restricted`, `blocked`, `unknown`, `manual_exempt`.
+- `allowed` passes training eligibility.
+- `restricted` passes training eligibility only when restriction conditions are recorded and satisfied; the conditions are preserved in manifests and reports.
+- `unknown` fails training eligibility.
+- `blocked` fails training eligibility.
+- `manual_exempt` passes training eligibility only for `intake_mode = "manual"` sources; records the exemption in training manifests and reports with an explicit notice that the data has not undergone third-party license verification.
+- `manual_exempt` combined with `intake_mode = "download"` fails with a structured error (cross-validation rule).
+- `manual_exempt` remains a distinct report category and must not be merged with `allowed`.
+- Task 43 consumes Task 41 staged source manifests and staging evidence.
+- Task 43 may read Task 42 conversion output only to cross-validate preserved `license_audit_ref`, checksum, local path provenance, and source provenance references.
+- Task 43 does not execute conversion, raw parsing, training, sampling, or Task 44+ work.
+- Staged manifest evidence and converted output reference mismatch fails with a structured cross-validation error.
 - Every staged source has audit evidence or explicit blocked status.
+- Missing manifest, missing checksum, missing provenance, missing license audit reference, or path outside the approved local data root fails eligibility.
+- Tests cover `allowed`, `restricted`, `blocked`, `unknown`, and `manual_exempt` fixtures.
+- Tests cover manual/download cross-validation, including download-mode plus `manual_exempt` rejection.
+- Tests cover report output categories, including distinct `manual_exempt`.
+- Tests cover audit reference preservation.
+- Tests prove no data download, raw-data conversion, model training, sampling, or training artifacts are produced.
+- Public API is `audit_v2_training_eligibility()` returning `ContractEnvelope[LicenseGateReport]`; `load_source_license_audit()` and `license_gate_report_to_dict()` support audit fixture loading and deterministic report serialization.
+- See ADR 0038 for the full decision record.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/data/test_v2_license.py -q
+python -m pytest tests/data/test_v2_manifests.py tests/data/test_v2_intake.py tests/data/test_v2_conversion.py tests/data/test_v2_license.py -q
+rg -n "allowed|restricted|blocked|unknown|manual_exempt|cross-validation|report output|audit reference" tests/data/test_v2_license.py docs/v2/05-v2-data-automation-spec.md
+rg -n "no download|no conversion|no training|no sampling|Task 44" docs/v2/10-v2-implementation-plan.md docs/v2/11-v2-verification-matrix.md
 ```
 
-**Notes:** License audit is a hard pre-training gate. It depends on Task 41 when staged manifests exist, because the gate must evaluate the same manifests that later conversion and training eligibility consume.
+**Notes:** License audit is a hard pre-training gate for download-mode data. It evaluates Task 41 staged manifest evidence and may cross-check Task 42 preserved references, but it does not run conversion. `unknown` and `blocked` may be recorded for audit, but must not enter training. `manual_exempt` is accepted for manual-mode data only (ADR 0038). Task 43 lightweight tests currently cover five-state fixtures, restricted-condition handling, unsupported status, multi-source counts, manual/download cross-validation, manual_exempt prerequisite checks, reference mismatch errors, deterministic output, and no network/conversion/training artifacts.
 
 ### Checkpoint V2-B: Data Intake Gate
 
@@ -239,9 +330,11 @@ python -m pytest tests/data/test_v2_license.py -q
 - manifest tests pass,
 - intake tests pass,
 - license gate tests pass,
-- no source with unknown/blocked license enters training eligibility.
+- validated local real data from `D:\codex_work\data` is staged without network download,
+- no source with unknown/blocked license enters training eligibility,
+- no real raw data is committed to git.
 
-## Phase V2-C: RDKit Integration
+## Phase V2-C: Chemistry / RDKit Heavy Adapters
 
 ### Task 44: Design RDKit Molecule Normalization Interface
 
@@ -261,16 +354,43 @@ python -m pytest tests/data/test_v2_license.py -q
 - Heavy test path validates sanitize/valence behavior when RDKit is available.
 - Public output is project-owned serializable data, not raw RDKit objects.
 - Default CI remains RDKit-free.
+- Module import does not hard-import RDKit.
+- Public API is `normalize_molecule(text, input_format="smiles")`, returning `MoleculeNormalizationResult`; `result_to_dict()` emits deterministic JSON-compatible data.
+- Structured failures include RDKit unavailable, empty input, unsupported format, parse failure, and sanitize/valence failure.
+- Task 44 does not implement Task 45 scaffold/descriptor/drug-likeness behavior or Task 46 PyTorch behavior.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/chem/test_rdkit_normalize.py -q
+python -m pytest tests/v2/test_smoke_check.py -q
+python scripts/v2_smoke_check.py --profile lightweight
 ```
 
-**Notes:** Tests must be written so default CI can skip heavy checks explicitly.
+**Task 44 verification evidence on 2026-06-18:**
 
+- Lightweight interpreter:
+  - `python -m pytest tests/chem/test_rdkit_normalize.py -q` - 6 passed, 6 skipped because RDKit is not installed in the lightweight interpreter.
+  - `python -m pytest tests/v2/test_smoke_check.py -q` - 11 passed.
+  - `python scripts/v2_smoke_check.py --profile lightweight` - exit 0, RDKit `not_checked`.
+- Official conda-forge environment creation was attempted twice:
+  - `conda create -n covalent-design-v2 -c conda-forge python=3.10 rdkit -y`
+  - `conda create -n covalent-design-v2 --override-channels -c conda-forge python=3.10 rdkit -y`
+  - Both attempts failed with `CondaHTTPError: HTTP 000 CONNECTION FAILED` while retrieving official conda-forge repodata.
+- After user approval to use a mirror, a new dedicated environment was created without using the existing `my_rdkit` environment:
+  - `conda create -n covalent-design-v2 --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge python=3.10 rdkit -y`
+  - Environment location: `D:\anaconda\envs\covalent-design-v2`
+  - `conda run -n covalent-design-v2 python --version` - Python 3.10.20.
+  - `conda run -n covalent-design-v2 python -c "import rdkit; print(rdkit.__version__)"` - RDKit 2026.03.1.
+  - `conda install -n covalent-design-v2 --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge pytest -y` installed pytest only into this new environment for test execution.
+  - `$env:PYTHONPATH='src'; conda run -n covalent-design-v2 python -m pytest tests/chem/test_rdkit_normalize.py -q` - 12 passed.
+- Heavy smoke in the same new environment:
+  - `$env:PYTHONPATH='src'; conda run -n covalent-design-v2 python scripts/v2_smoke_check.py --profile heavy` - exit 1 with `exit_reason: heavy_dependency_unavailable`.
+  - RDKit subcheck was `available`, version `2026.03.1`.
+  - The remaining unavailable heavy dependencies were PyTorch, CUDA, PMDM, and PocketFlow; these are outside Task 44.
+
+**Notes:** Tests are written so default CI can skip heavy checks explicitly. Task 44 is verified for the RDKit normalization adapter in a newly created dedicated conda environment. This evidence does not claim that the later full heavy stack is ready; PyTorch, CUDA, PMDM, and PocketFlow remain future task concerns.
 ### Task 45: Design RDKit Scaffold, Descriptor, And Drug-Likeness Interface
 
 **Goal:** Provide chemistry diagnostics for data and generated outputs.
@@ -304,7 +424,7 @@ python -m pytest tests/chem/test_rdkit_descriptors.py tests/chem/test_scaffolds.
 
 **Goal:** Confirm RDKit-backed checks are isolated, optional in CI, and useful for reports.
 
-## Phase V2-D: PyTorch Training Foundation
+## Phase V2-D: Tensor / PMDM / Baseline Training Foundation
 
 ### Task 46: Design PyTorch Tensor Backend Boundary
 
@@ -389,6 +509,19 @@ python -m pytest tests/model/test_non_pmdm_baseline.py -q
 ```
 
 **Notes:** This is a fallback, not the preferred scientific path.
+
+### Checkpoint V2-D: Tensor / PMDM / Baseline Foundation Gate
+
+**Goal:** Confirm tensor conversion, PMDM mode, and baseline mode are all explicit before training-loop work starts.
+
+**Required evidence:**
+
+- PyTorch tensor adapter behavior is source-verified or reported unavailable,
+- PMDM adapter smoke reports the seven required PMDM keys or structured unavailability,
+- baseline fallback is labeled `non_pmdm_baseline`,
+- PMDM and baseline modes cannot be silently confused.
+
+## Phase V2-E: Training Loop And Tuning
 
 ### Task 49: Design Training Dataset V2
 
@@ -478,12 +611,6 @@ python -m pytest tests/training/test_v2_manifests.py -q
 
 **Notes:** Defines manifest schemas only; it must not start training or commit model weights. Heavy dependency provenance is metadata and does not make default CI install heavy packages.
 
-### Checkpoint V2-D: Training Foundation Gate
-
-**Goal:** Confirm tensor, model, dataset, and training smoke paths are ready for tuning.
-
-## Phase V2-E: Hyperparameter Tuning
-
 ### Task 52: Design Hyperparameter Tuning Protocol
 
 **Goal:** Run a tiny, budget-controlled sweep with deterministic manifests.
@@ -514,9 +641,17 @@ python -m covalent_design.training.cli.v2_tune --config configs/v2_tiny_sweep.ym
 
 **Notes:** Tuning is budget-controlled and manifest-driven. It must not silently promote failed trials or create untracked heavyweight outputs.
 
-### Checkpoint V2-E: Tuning Gate
+### Checkpoint V2-E: Training Loop And Tuning Gate
 
-**Goal:** Confirm one selected checkpoint exists with auditable provenance.
+**Goal:** Confirm dataset eligibility, training smoke, manifest capture, and tuning selection have auditable provenance.
+
+**Required evidence:**
+
+- training eligibility excludes blocked sources and families,
+- CPU smoke training completes or fails with a structured reason,
+- GPU/full heavy training remains manual unless the heavy profile is explicitly selected,
+- experiment manifests bind environment, dependency, data, family readiness, config, and checkpoint hashes,
+- tiny sweep output records trial results and a selected checkpoint without hiding failed trials.
 
 ## Phase V2-F: Sampling And Evaluation
 
@@ -726,3 +861,15 @@ python -m unittest discover -s tests -t . -q
 ```
 
 **Notes:** Do not enter a paper/release claim unless a separate review accepts that scope.
+
+### Checkpoint V2-H: V2 Beta Release Gate
+
+**Goal:** Decide whether the v2-beta closed loop is ready for the next implementation phase.
+
+**Required evidence:**
+
+- Checkpoints V2-A through V2-F are complete,
+- optional Checkpoint V2-G is either skipped with rationale or completed as a research-only track,
+- `docs/v2/11-v2-verification-matrix.md` has evidence status for every task,
+- `docs/v2/12-v2-risk-register.md` has no unresolved P0/P1 blocker,
+- release review records the final go/no-go verdict and scope boundaries.
