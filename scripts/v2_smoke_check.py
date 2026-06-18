@@ -21,6 +21,7 @@ SCHEMA_VERSION = "1.0.0"
 CONTRACT_VERSION = "v2-beta"
 SUPPORTED_PROFILES = ("lightweight", "heavy")
 GENERATED_AT = "1970-01-01T00:00:00Z"
+DEPENDENCY_STATUS_VALUES = ("available", "unavailable", "not_checked", "failed")
 
 
 def _json_print(payload: Dict[str, Any]) -> None:
@@ -34,6 +35,7 @@ def _base_report(profile: str) -> Dict[str, Any]:
         "dependency_statuses": {},
         "environment_name": ENVIRONMENT_NAME,
         "errors": [],
+        "exit_reason": None,
         "generated_at": GENERATED_AT,
         "overall_status": "unknown",
         "platform": {
@@ -46,6 +48,7 @@ def _base_report(profile: str) -> Dict[str, Any]:
         "python_version": platform.python_version(),
         "role": "v2_environment_manifest",
         "schema_version": SCHEMA_VERSION,
+        "status": "unknown",
         "warnings": [],
     }
 
@@ -53,6 +56,8 @@ def _base_report(profile: str) -> Dict[str, Any]:
 def _unsupported_profile(profile: str) -> int:
     payload = _base_report(profile)
     payload["overall_status"] = "failed"
+    payload["status"] = "failed"
+    payload["exit_reason"] = "unsupported_profile"
     payload["errors"].append(
         {
             "code": "V2_ENV_PROFILE_UNSUPPORTED",
@@ -97,12 +102,12 @@ def _project_import_check() -> Dict[str, Any]:
     }
 
 
-def _dependency_not_required(name: str, message: str) -> Dict[str, Any]:
+def _dependency_not_checked(name: str, message: str) -> Dict[str, Any]:
     return {
         "message": message,
         "name": name,
         "required_for_profile": False,
-        "status": "not_required",
+        "status": "not_checked",
     }
 
 
@@ -142,7 +147,7 @@ def _cuda_status(torch_status: Dict[str, Any]) -> Dict[str, Any]:
             "message": "PyTorch unavailable, so CUDA runtime was not checked",
             "name": "cuda",
             "required_for_profile": True,
-            "status": "unavailable",
+            "status": "not_checked",
         }
     try:
         torch_module = importlib.import_module("torch")
@@ -179,15 +184,26 @@ def _docking_status() -> Dict[str, Any]:
     }
 
 
-def _lightweight_dependency_statuses() -> Dict[str, Dict[str, Any]]:
-    message = "heavy dependency is not required for lightweight profile"
+def _pmdm_status() -> Dict[str, Any]:
     return {
-        "cuda": _dependency_not_required("cuda", message),
-        "docking": _dependency_not_required("docking", message),
-        "pmdm": _dependency_not_required("pmdm", message),
-        "pocketflow": _dependency_not_required("pocketflow", message),
-        "pytorch": _dependency_not_required("pytorch", message),
-        "rdkit": _dependency_not_required("rdkit", message),
+        "import_attempted": False,
+        "message": "PMDM import blocked: license status unknown, pending source verification",
+        "name": "pmdm",
+        "reason": "license_unknown",
+        "required_for_profile": True,
+        "status": "unavailable",
+    }
+
+
+def _lightweight_dependency_statuses() -> Dict[str, Dict[str, Any]]:
+    message = "heavy dependency was not checked for lightweight profile"
+    return {
+        "cuda": _dependency_not_checked("cuda", message),
+        "docking": _dependency_not_checked("docking", message),
+        "pmdm": _dependency_not_checked("pmdm", message),
+        "pocketflow": _dependency_not_checked("pocketflow", message),
+        "pytorch": _dependency_not_checked("pytorch", message),
+        "rdkit": _dependency_not_checked("rdkit", message),
     }
 
 
@@ -195,7 +211,7 @@ def _heavy_dependency_statuses() -> Dict[str, Dict[str, Any]]:
     statuses = {
         "pytorch": _guarded_import("pytorch", "torch"),
         "rdkit": _guarded_import("rdkit", "rdkit"),
-        "pmdm": _guarded_import("pmdm", "PMDM"),
+        "pmdm": _pmdm_status(),
         "pocketflow": _guarded_import("pocketflow", "PocketFlow"),
         "docking": _docking_status(),
     }
@@ -240,12 +256,18 @@ def _build_report(profile: str) -> Tuple[Dict[str, Any], int]:
 
     if report["errors"]:
         report["overall_status"] = "failed"
+        report["status"] = "failed"
+        report["exit_reason"] = "project_import_failed"
         return report, 1
     if heavy_failures:
         report["overall_status"] = "unavailable"
+        report["status"] = "unavailable"
+        report["exit_reason"] = "heavy_dependency_unavailable"
         return report, 2
 
     report["overall_status"] = "pass"
+    report["status"] = "pass"
+    report["exit_reason"] = "ok"
     return report, 0
 
 

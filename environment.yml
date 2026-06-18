@@ -1,10 +1,22 @@
 # covalent-design-v2 environment scaffold
 #
-# Task 37 boundary:
+# Task 37 boundary (environment scaffold and lightweight smoke):
 # - This file is a scaffold, not a verified lock file.
 # - Do not run conda/mamba/pip install as part of Task 37.
 # - Do not treat any placeholder version below as source-verified.
-# - Source verification and lock output are Task 38 scope.
+#
+# Task 38 boundary (source verification and lock strategy):
+# - Task 38 must not run conda/mamba/pip install or environment solve.
+# - Task 38 must not generate real lock files (conda env export, conda-lock, etc.).
+# - Task 38 may record official source URLs and version scope in the
+#   source verification table (docs/v2/dependency-source-verification.md).
+# - Task 38 may mark rows as verified/blocked/unverified in that table.
+# - Task 38 may add or update scaffold comments in this file.
+# - Do not change dependency versions based on unverified claims.
+#
+# Four-layer environment model (documented in 04-v2-dependency-and-environment-spec.md):
+#   environment.yml (scaffold) -> source verification (Task 38, manual)
+#       -> lock output (future/manual) -> installed environment (future/manual)
 #
 # ADR 0037 smoke profile vocabulary:
 # - lightweight: default CI and Windows-local health check.
@@ -34,13 +46,18 @@ dependencies:
   - pip
 
   # Project package install mode placeholder.
-  # Task 37 does not install the package from this file. The repository does
-  # not currently have pyproject.toml/setup.py, so this remains inactive until
-  # a later task defines the project package metadata.
+  # UNRESOLVED: the repository does not currently contain pyproject.toml,
+  # setup.py, or setup.cfg. This placeholder cannot be activated until a
+  # later task defines the project package metadata.
+  # Task 37 and Task 38 use PYTHONPATH=src (PowerShell: $env:PYTHONPATH='src')
+  # instead of an installed package. Editable install mode (pip install -e .)
+  # remains a future concern.
   # - pip:
   #     - "-e ."
 
-  # Heavy optional dependency placeholders. Do not uncomment in Task 37.
+  # Heavy optional dependency placeholders. Do not uncomment in Task 37 or
+  # Task 38. Uncommenting requires source verification and a later task that
+  # performs environment solve/install.
 
   # PyTorch / CUDA, UNVERIFIED / Task 38.
   # Required later for tensor backend, PMDM adapter smoke, and GPU training.
@@ -64,11 +81,13 @@ dependencies:
   # - pytorch-geometric=<UNVERIFIED>
 
   # PMDM / PocketFlow source checkouts, UNVERIFIED / Task 38.
-  # These are not default dependencies and are not installed by Task 37.
+  # These are not default dependencies and are not installed by Task 37 or
+  # Task 38. Source verification and license status must be recorded in the
+  # source verification table before any install path is executed.
   # - pip:
   #     - "-e <PMDM_PATH>"
   #     - "-e <POCKETFLOW_PATH>"
 
   # Docking engine, NOT REQUIRED YET.
-  # Optional feasibility only; no engine is selected in Task 37.
+  # Optional feasibility only; no engine is selected in Task 37 or Task 38.
   # - <docking-engine>=<UNVERIFIED>
