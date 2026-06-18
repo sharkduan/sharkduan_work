@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "CovPDB",
+  "intake_mode": "download",
+  "source_url": "https://example.com/covpdb/data.zip",
+  "checksum": "4f3b2c1a4f3b2c1a4f3b2c1a4f3b2c1a4f3b2c1a4f3b2c1a4f3b2c1a4f3b2c1a4f3b",
+  "checksum_algorithm": "md5",
+  "parser_target": "covpdb",
+  "retrieval_date": "2026-06-16",
+  "license_audit_ref": "audit/covpdb/license.json",
+  "access_notes": "unsupported checksum algorithm md5"
+}

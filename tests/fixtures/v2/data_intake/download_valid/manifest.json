@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "CovalentInDB",
+  "intake_mode": "download",
+  "source_url": "https://example.invalid/covalentindb/release/dataset_v3.tsv",
+  "checksum": "0000000000000000000000000000000000000000000000000000000000000001",
+  "checksum_algorithm": "sha256",
+  "parser_target": "covalentin_db",
+  "retrieval_date": "2026-06-16",
+  "license_audit_ref": "audit/covalentindb/license.json",
+  "access_notes": "Download request fixture; no network access performed"
+}

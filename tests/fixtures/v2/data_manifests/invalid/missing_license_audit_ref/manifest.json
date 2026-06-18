@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "CovPDB",
+  "intake_mode": "download",
+  "source_url": "https://example.com/covpdb/data.zip",
+  "checksum": "88888888888888888888888888888888888888888888888888888888888888889999",
+  "checksum_algorithm": "sha256",
+  "parser_target": "covpdb",
+  "retrieval_date": "2026-06-16",
+  "access_notes": "Missing license_audit_ref"
+}

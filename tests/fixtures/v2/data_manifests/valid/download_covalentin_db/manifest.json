@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "CovalentInDB",
+  "intake_mode": "download",
+  "source_url": "https://example.com/covalentin_db/release/covalentindb_v2.zip",
+  "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "checksum_algorithm": "sha256",
+  "parser_target": "covalentin_db",
+  "retrieval_date": "2026-06-16",
+  "license_audit_ref": "audit/covalentin_db/license.json",
+  "access_notes": "Download mode for CovalentInDB"
+}

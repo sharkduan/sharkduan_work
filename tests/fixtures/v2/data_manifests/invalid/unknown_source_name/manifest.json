@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "UnknownDB",
+  "intake_mode": "download",
+  "source_url": "https://example.com/unknown/data.zip",
+  "checksum": "00000000000000000000000000000000000000000000000000000000000000001111",
+  "checksum_algorithm": "sha256",
+  "parser_target": "generic",
+  "retrieval_date": "2026-06-16",
+  "license_audit_ref": "audit/unknown/license.json",
+  "access_notes": "Unknown source should be rejected"
+}

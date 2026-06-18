@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "CovPDB",
+  "intake_mode": "download",
+  "source_url": "https://example.com/covpdb/data.zip",
+  "checksum": "55555555555555555555555555555555555555555555555555555555555555556666",
+  "checksum_algorithm": "sha256",
+  "parser_target": "unknown_format_v7",
+  "retrieval_date": "2026-06-16",
+  "license_audit_ref": "audit/covpdb/license.json",
+  "access_notes": "Unknown parser target should be rejected"
+}

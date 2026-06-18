@@ -1,0 +1,4 @@
+pdb_id	uniprot_id	residue	residue_number	ligand	ligand_name	bond_type	warhead_type
+1abc	P12345	CYS145	145	ABC	Acrylamide	carbon-sulfur	acrylamide
+2def	Q67890	SER241	241	DEF	Chloroacetamide	carbon-oxygen	chloroacetamide
+3ghi	A11111	LYS97	97	GHI	Vinylsulfonamide	carbon-nitrogen	vinylsulfonamide

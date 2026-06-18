@@ -1,0 +1,5 @@
+pdb_id	uniprot_id	residue	residue_number	ligand	ligand_name	bond_type	warhead_type
+1abc	P12345	CYS145	145	ABC	Acrylamide	carbon-sulfur	acrylamide
+broken_row_with_only_three_fields
+4jkl				MNO	Epoxide	carbon-oxygen	epoxide
+5mno	B22222	HIS123	123	PQR	Unknown

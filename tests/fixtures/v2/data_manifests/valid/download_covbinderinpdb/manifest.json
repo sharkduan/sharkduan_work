@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "contract_version": "v2-beta",
+  "source_name": "CovBinderInPDB",
+  "intake_mode": "download",
+  "source_url": "https://example.com/covbinderinpdb/archive/covbinder_v3.tar.gz",
+  "checksum": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "checksum_algorithm": "sha256",
+  "parser_target": "covbinder_in_pdb",
+  "retrieval_date": "2026-06-16",
+  "license_audit_ref": "audit/covbinderinpdb/license.json",
+  "access_notes": "Downloaded from CovBinderInPDB archive page"
+}
