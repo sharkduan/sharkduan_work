@@ -535,18 +535,34 @@ class NoHeavyImportsGuardTests(unittest.TestCase):
     """Forward smoke test file must not import torch, RDKit, PMDM, or PocketFlow."""
 
     def test_forward_smoke_module_does_not_import_heavy_dependencies(self) -> None:
-        heavy = {"torch", "rdkit", "pmdm", "pocketflow"}
-        violations: list[str] = []
-        for mod_name in sorted(sys.modules):
-            lower = mod_name.lower()
-            for h in heavy:
-                if lower == h or lower.startswith(h + "."):
-                    violations.append(mod_name)
-        self.assertEqual(
-            violations,
-            [],
-            f"heavy dependencies found in sys.modules: {violations}",
+        """Check import purity in a clean interpreter, not this pytest process."""
+        import os
+        import subprocess
+
+        repo_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
         )
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(
+            [os.path.join(repo_root, "src"), repo_root]
+        )
+        code = (
+            "import importlib, sys; "
+            "importlib.import_module('tests.model.test_forward_smoke'); "
+            "heavy = {'torch', 'rdkit', 'pmdm', 'pocketflow'}; "
+            "violations = [m for m in sys.modules "
+            "if any(m.lower() == h or m.lower().startswith(h + '.') for h in heavy)]; "
+            "assert not violations, f'heavy modules loaded: {violations}'"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=repo_root,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_forward_pipeline_shape_summary_is_pure_python(self) -> None:
         """The full forward pipeline (PMDM + covalent) must use only pure Python."""
