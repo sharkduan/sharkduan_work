@@ -146,7 +146,7 @@ def stage_source_manifest(
     manifest_dir = path.parent
 
     try:
-        manifest_text = path.read_text(encoding="utf-8")
+        manifest_text = path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         error = _error(
             "V2_INTAKE_MANIFEST_UNREADABLE",
@@ -188,12 +188,16 @@ def _stage_manual(
     manual_path = manual_path.resolve()
 
     if not manual_path.is_file():
-        error = _error(
-            "V2_INTAKE_MANUAL_PATH_FILE_NOT_FOUND",
-            f"Manual file not found: {manual_path}",
-            location=str(manual_path),
-        )
-        return _fail_envelope((error,))
+        fallback_path = manifest_dir.parent / manual_path.name
+        if fallback_path.is_file():
+            manual_path = fallback_path.resolve()
+        else:
+            error = _error(
+                "V2_INTAKE_MANUAL_PATH_FILE_NOT_FOUND",
+                f"Manual file not found: {manual_path}",
+                location=str(manual_path),
+            )
+            return _fail_envelope((error,))
 
     actual_sha256 = hashlib.sha256(manual_path.read_bytes()).hexdigest()
     if actual_sha256 != manifest.checksum:

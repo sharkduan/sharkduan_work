@@ -284,6 +284,20 @@ def test_invalid_json_file_fails_with_structured_error(tmp_path: Path) -> None:
     assert "V2_MANIFEST_INVALID_JSON" in error_codes(envelope)
 
 
+def test_utf8_bom_manifest_file_is_accepted(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps(manifest_payload(), sort_keys=True, separators=(",", ":")),
+        encoding="utf-8-sig",
+    )
+
+    envelope = validate_v2_data_intake_manifest(path)
+
+    assert envelope.receipt.ok
+    assert envelope.payload is not None
+    assert envelope.payload.source_name == "CovPDB"
+
+
 def test_json_root_must_be_object() -> None:
     envelope = v2_data_intake_manifest_from_dict([])  # type: ignore[arg-type]
 

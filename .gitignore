@@ -56,6 +56,9 @@ data/raw/**
 data/interim/**
 data/processed/**
 data/reports/**
+data/v2/processed/*.json
+data/v2/processed/*.jsonl
+data/v2/staging/*.tsv
 !data/raw/**/
 !data/interim/**/
 !data/processed/**/

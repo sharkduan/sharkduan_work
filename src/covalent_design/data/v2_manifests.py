@@ -85,7 +85,7 @@ def validate_v2_data_intake_manifest(
     """Validate a manifest JSON file without touching raw data or network."""
     path = Path(manifest_path)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         error = _error(
             "V2_MANIFEST_UNREADABLE",

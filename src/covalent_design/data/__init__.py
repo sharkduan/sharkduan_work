@@ -18,8 +18,11 @@ from covalent_design.data.artifact_manifests import finalize_record_manifests
 from covalent_design.data.splits import SplitPolicy, build_splits
 from covalent_design.data.quality_report import write_quality_report
 from covalent_design.data.v2_conversion import (
+    SUPPORTED_PARSER_TARGETS,
+    UNSUPPORTED_PARSER_TARGETS,
     convert_staged_manifest,
     convert_staged_source,
+    is_parser_target_supported,
 )
 from covalent_design.data.v2_intake import (
     V2DownloadRequest,
@@ -95,7 +98,9 @@ __all__ = [
     "QualityGateResult",
     "RejectedIdentityInput",
     "RejectedRecord",
+    "SUPPORTED_PARSER_TARGETS",
     "SplitPolicy",
+    "UNSUPPORTED_PARSER_TARGETS",
     "LICENSE_STATUS_ALLOWED",
     "LICENSE_STATUS_BLOCKED",
     "LICENSE_STATUS_MANUAL_EXEMPT",
@@ -116,6 +121,7 @@ __all__ = [
     "convert_staged_manifest",
     "convert_staged_source",
     "finalize_record_manifests",
+    "is_parser_target_supported",
     "normalize_identity_json",
     "normalize_linkages",
     "normalize_with_identity_resolution",
