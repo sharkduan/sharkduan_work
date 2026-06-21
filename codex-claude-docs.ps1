@@ -196,12 +196,9 @@ if ($allowedDirs.Count -gt 0) {
   }
 }
 
-$claudeArgs += "--"
-$claudeArgs += $systemTask
-
 Push-Location $runDir
 try {
-  & claude @claudeArgs
+  $systemTask | & claude @claudeArgs
   $exitCode = $LASTEXITCODE
 } finally {
   Pop-Location
