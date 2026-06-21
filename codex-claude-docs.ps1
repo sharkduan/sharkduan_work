@@ -36,6 +36,9 @@ param(
 
   [string[]]$ExtraReadDir = @(),
 
+  [Alias("exclude-dynamic-system-prompt-sections")]
+  [switch]$ExcludeDynamicSystemPromptSections,
+
   [switch]$Interactive
 )
 
@@ -125,6 +128,11 @@ foreach ($extra in $ExtraReadDir) {
   }
 }
 
+if ($Prompt -eq "--exclude-dynamic-system-prompt-sections") {
+  $ExcludeDynamicSystemPromptSections = $true
+  $Prompt = $null
+}
+
 $userTask = Get-TaskText -InlinePrompt $Prompt -FilePath $PromptFile -RepoRoot $repoRoot
 
 if (-not (Test-Path -LiteralPath $bridgeDir -PathType Container)) {
@@ -170,6 +178,10 @@ if (-not $Interactive) {
   $claudeArgs += "--print"
   $claudeArgs += "--output-format"
   $claudeArgs += "text"
+}
+
+if ($ExcludeDynamicSystemPromptSections) {
+  $claudeArgs += "--exclude-dynamic-system-prompt-sections"
 }
 
 $claudeArgs += "--permission-mode"
