@@ -12,9 +12,11 @@ This document records the official-source evidence for every dependency listed o
 | Python | v2 runtime version support (3.10 placeholder) | https://docs.python.org/3/ ; https://devguide.python.org/versions/ | 3.10 (placeholder; exact minor/patch unverified; Python devguide records Python 3.10 in security support until 2026-10) | PSF License (permissive, BSD-like) | 2026-06-16 | unverified | 37, 39 |
 | Conda/Mamba | environment solve and lock workflow | https://docs.conda.io/projects/conda/en/latest/ ; https://mamba.readthedocs.io/en/latest/ | conda >=23.x / mamba >=1.x (unverified exact version) | BSD-3-Clause (conda); BSD-3-Clause (mamba) | 2026-06-16 | unverified | 38 |
 | pip | package install tooling for editable install mode | https://pip.pypa.io/en/stable/ | >=23.x (unverified exact version) | MIT | 2026-06-16 | unverified | 37, 38 |
-| PyTorch | tensor backend, CPU/GPU smoke, CUDA compatibility | https://pytorch.org/get-started/locally/ | 2.x with CUDA 11.8 or 12.x (exact version unverified; PMDM mol.yml pins 2.1.1+cu118) | BSD-3-Clause (PyTorch) | 2026-06-16 | unverified | 46, 50 |
+| PyTorch | tensor backend boundary, CPU/GPU smoke, CUDA compatibility | https://pytorch.org/get-started/locally/ | 2.12.1+cu126 installed in `covalent-design-v2`; PMDM mol.yml pins 2.1.1+cu118 and remains unverified for PMDM compatibility | BSD-3-Clause (PyTorch) | 2026-06-19 | verified-for-task46-boundary | 46, 50 |
 | CUDA | single-GPU runtime capability | https://docs.nvidia.com/cuda/ | 11.8 or 12.x toolkit (exact version unverified; PMDM mol.yml pins cudatoolkit 11.8.0) | NVIDIA EULA (proprietary) | 2026-06-16 | unverified | 39, 50 |
 | RDKit | molecule normalization, scaffold/descriptor diagnostics | https://www.rdkit.org/docs/ ; https://github.com/rdkit/rdkit | >=2022.09 (unverified exact version; PMDM mol.yml pins 2022.09.1) | BSD-3-Clause | 2026-06-16 | unverified | 44, 45 |
+
+**RDKit Task 45 evidence (2026-06-19):** RDKit 2026.03.1 installed in `covalent-design-v2` conda environment. All 44+45 RDKit-backed heavy tests pass (15 descriptor + 14 scaffold). Bemis-Murcko scaffold API source-verified via `rdkit.Chem.Scaffolds.MurckoScaffold.GetScaffoldForMol`. Descriptor computation uses `CalcMolDescriptors` primary path with manual fallback. Drug-likeness (Lipinski Ro5 + QED) is diagnostic-only. The `unverified` status above reflects pending exact version lock and solver-compatibility confirmation, not a functional gap in the adapter interface.
 | PMDM | real backbone adapter smoke | https://github.com/Layne-Huang/PMDM | HEAD of main branch (commit unverified; Zenodo DOI 10.5281/zenodo.10631313 for pretrained weights) | **unknown** -- no LICENSE file found in upstream repository at `https://github.com/Layne-Huang/PMDM` | 2026-06-16 | blocked | 47 |
 | pytorch-scatter | PMDM graph dependency (scatter operations) | https://github.com/rusty1s/pytorch_scatter | >=2.1.2+pt21cu118 (unverified; PMDM mol.yml pip pin) | MIT | 2026-06-16 | unverified | 47 |
 | pytorch-sparse | PMDM graph dependency (sparse operations) | https://github.com/rusty1s/pytorch_sparse | >=0.6.18+pt21cu118 (unverified; PMDM mol.yml pip pin) | MIT | 2026-06-16 | unverified | 47 |
@@ -24,6 +26,9 @@ This document records the official-source evidence for every dependency listed o
 | PocketFlow | optional reference/supervision ideas only | https://github.com/Saoge123/PocketFlow | HEAD of master branch (commit unverified) | MIT (file `Liscense` in repo root, copyright NicholasYe 2021) | 2026-06-16 | not required yet | 47 |
 | Project package install mode | editable install (`pip install -e .`) | https://pip.pypa.io/en/stable/topics/local-project-installs/ | pip >=23.x (no pyproject.toml/setup.py exists yet) | MIT (pip) | 2026-06-16 | unverified | 37, 38 |
 | Docking engine | optional feasibility probe only; no engine selected | not selected -- no official source to verify | not applicable | not applicable | 2026-06-16 | not required yet | 56 |
+
+
+**Task 47 boundary:** The PMDM real adapter smoke module is implemented as a structured-unavailable boundary while PMDM remains `blocked`; it must not import, load, or execute PMDM, and it must not silently fall back to `non_pmdm_baseline`.
 
 ## Status Definitions
 
@@ -115,6 +120,8 @@ torch-spline-conv==1.2.2+pt21cu118
 ```
 
 V2 targets Python 3.10 (PMDM uses Python 3.9). The PyTorch and CUDA versions for V2 have not been locked. Until exact version compatibility is confirmed through a solver run, all PMDM graph dependencies remain `unverified`.
+
+Task 47 does not install or import `pytorch-scatter`, `pytorch-sparse`, `pytorch-cluster`, `pytorch-geometric`, or `pytorch-spline-conv`; these packages remain out of the active environment until PMDM licensing and compatibility are resolved.
 
 ## Docking Engine
 

@@ -170,7 +170,7 @@ Scope exclusion: Task 40 does not download, stage, convert, inspect raw data, de
 
 Misuse guard: missing checksum fails validation with `V2_MANIFEST_MISSING_REQUIRED_FIELD`. Mismatched source/parser fails with `V2_MANIFEST_SOURCE_PARSER_MISMATCH`.
 
-Verification (2026-06-16): `python -m pytest tests/data/test_v2_manifests.py -q` — 29 passed.
+Verification (2026-06-16): `python -m pytest tests/data/test_v2_manifests.py -q` - 29 passed.
 
 ### V2Conversion
 
@@ -182,33 +182,45 @@ Producer: `convert_staged_source()` / `convert_staged_manifest()`. Consumer: v1 
 
 Public API:
 
-- `convert_staged_source(staging_envelope: ContractEnvelope[V2StagingSummary], *, reverify_checksum: bool = True) → ContractEnvelope[tuple[SourceIngestRecord, ...]]`
-- `convert_staged_manifest(manifest_path: Path, *, reverify_checksum: bool = True) → ContractEnvelope[tuple[SourceIngestRecord, ...]]`
+- `convert_staged_source(staging_envelope: ContractEnvelope[V2StagingSummary], *, reverify_checksum: bool = True) ->ContractEnvelope[tuple[SourceIngestRecord, ...]]`
+- `convert_staged_manifest(manifest_path: Path, *, reverify_checksum: bool = True) ->ContractEnvelope[tuple[SourceIngestRecord, ...]]`
 
 Conversion contract:
 
 - Only `status == "checksum_verified"` (manual local file) is convertible.
-- `pending_download` returns `V2_CONVERSION_PENDING_DOWNLOAD` — no placeholder records.
+- `pending_download` returns `V2_CONVERSION_PENDING_DOWNLOAD` - no placeholder records.
 - Failed staging envelope returns `V2_CONVERSION_STAGING_FAILED`.
 - Forged or non-Task-41 staging envelopes return `V2_CONVERSION_INVALID_STAGING_EVIDENCE`.
-- Optional checksum re-verification (`reverify_checksum=True` by default): re-reads the file and recomputes SHA-256; mismatch → `V2_CONVERSION_CHECKSUM_MISMATCH`.
+- Optional checksum re-verification (`reverify_checksum=True` by default): re-reads the file and recomputes SHA-256; mismatch -> `V2_CONVERSION_CHECKSUM_MISMATCH`.
 - Zero network access enforced by tests.
 - No filesystem artifacts written during conversion (purely in-memory).
 
-Supported parser targets: `covalentin_db` only (Task 42 scope). `covpdb` and `covbinder_in_pdb` return `V2_CONVERSION_UNSUPPORTED_PARSER`.
+Supported parser targets: `covalentin_db`, `covpdb`, and `covbinder_in_pdb`.
 
-TSV parser required columns: `pdb_id`, `uniprot_id`, `residue`, `residue_number`, `ligand`, `ligand_name`, `bond_type`, `warhead_type`.
+Accepted input shapes:
+
+- CovalentInDB real CSV (`Covalent_Complex_Records.csv`).
+- CovBinderInPDB real CSV (`CovBinderInPDB_2022Q4_AllRecords.csv`).
+- CovPDB extracted local PDB directory, discovered from the checksum-verified archive manifest path.
+- v1-compatible TSV bridge schemas for all three parser targets.
+- Legacy 8-column synthetic covalentin_db TSV fixtures.
+
+`v2_run_real_etl` is the artifact-producing orchestration layer. It writes
+`data/v2/processed/v2_real_etl_manifest.json` plus per-source local JSONL
+records only for sources that pass manifest validation, checksum staging,
+conversion, and license/provenance gate. Failed conversion payloads are not
+fed to the license gate or processed output.
 
 Output: `ContractEnvelope[tuple[SourceIngestRecord, ...]]` where each record carries:
 
 - `source_database`, `source_version`, `source_record_id`, `row_index`
-- `raw_file_path`, `raw_manifest_file`, `raw_file_sha256` — provenance
-- `lineage` (dict) — includes `license_audit_ref` and `source_url` when available
-- `metadata` (dict) — includes `pdb_id`, `license_audit_ref`, `source_url`
+- `raw_file_path`, `raw_manifest_file`, `raw_file_sha256` -provenance
+- `lineage` (dict) -includes `license_audit_ref` and `source_url` when available
+- `metadata` (dict) -includes `pdb_id`, `license_audit_ref`, `source_url`
 - `protein` (dict), `ligand` (dict), `linkage` (dict)
 - `source_lineage` (`SourceRecordLineage`)
 - `target_atom_identity` (`ProteinAtomIdentity`), `ligand_atom_identity` (`LigandAtomIdentity`)
-- `artifacts` is always empty `()` — artifact refs are Task 43+ scope
+- `artifacts` is always empty `()` -artifact refs are Task 43+ scope
 
 Error codes (all `owner = "data"`, `V2_CONVERSION_*` prefix):
 
@@ -321,6 +333,183 @@ Scope exclusions:
 
 - Task 44 does not implement scaffold keys, descriptors, drug-likeness, mmCIF writing, PyTorch tensor conversion, model forward, training, inference, evaluation, or real-data directory access.
 
+### RDKit Descriptor Computation Report
+
+Purpose: heavy-profile molecular descriptor computation and drug-likeness diagnostics for Task 45.
+
+Implementation: `src/covalent_design/chem/rdkit_descriptors.py`
+
+Public API:
+
+- `compute_descriptors(text, input_format="smiles") -> DescriptorResult`
+- `descriptor_result_to_dict(result) -> dict[str, object]`
+
+Supported input formats:
+
+- `smiles`
+- `molblock`
+
+Output boundary:
+
+- `DescriptorResult` is project-owned serializable data (frozen dataclass).
+- The public result includes `status`, `input_format`, `rdkit_available`, `descriptors` (mapping of 11 public-facing descriptor keys to Python built-in values), `diagnostics`, `error_code`, `error_message`.
+- Raw RDKit `Mol`, `Atom`, `Bond`, or descriptor objects (e.g. numpy scalars) must not cross the package seam.
+- Numpy scalars from RDKit internals are coerced to Python `float` before exposure.
+
+Public descriptor keys (via `_DESCRIPTOR_KEY_MAP`):
+
+- `molecular_weight`, `logp`, `num_h_acceptors`, `num_h_donors`, `num_rotatable_bonds`, `tpsa`, `num_rings`, `num_heavy_atoms`, `fraction_csp3`, `num_aromatic_rings`, `molar_refractivity`.
+
+Descriptor computation strategy:
+
+- Primary path: `rdkit.Chem.Descriptors.CalcMolDescriptors`.
+- Manual fallback: individual `rdkit.Chem.Descriptors` functions and `rdkit.Chem.Crippen` when the bulk API is unavailable.
+- Descriptor keys that cannot be computed are silently omitted from the output dict (graceful degradation).
+
+Drug-likeness diagnostics (diagnostic-only, not a hard gate):
+
+- Lipinski Rule of 5: violations counted (MW>500, LogP>5, HBD>5, HBA>10); field `passes` reports overall compliance without gating `status`.
+- QED: computed via `rdkit.Chem.QED.qed()` when available; reported as `None` when computation fails.
+- Both diagnostics appear in the `diagnostics` tuple with `category: "druglikeness"`.
+- Result `status` remains `"ok"` even when molecules fail drug-likeness thresholds.
+
+Environment behavior:
+
+- Module import is lightweight-safe -`importlib.import_module` used for RDKit inside function bodies, no hard RDKit import at module level.
+- When RDKit is unavailable: `status = "unavailable"`, `error_code = "DESCRIPTOR_RDKIT_UNAVAILABLE"`.
+- When RDKit is available: real `CalcMolDescriptors` computation plus drug-likeness diagnostics.
+
+Structured failure codes:
+
+- `DESCRIPTOR_RDKIT_UNAVAILABLE`
+- `DESCRIPTOR_EMPTY_INPUT`
+- `DESCRIPTOR_UNSUPPORTED_FORMAT`
+- `DESCRIPTOR_PARSE_FAILED`
+
+Scope exclusions:
+
+- Task 45 does not implement mmCIF writing, PyTorch tensor conversion, docking, model forward, training, inference, evaluation, or real-data directory access.
+- Drug-likeness is diagnostic-only; it is not a hard beta gate.
+
+### RDKit Scaffold Derivation Report
+
+Purpose: heavy-profile Bemis-Murcko scaffold derivation for Task 45.
+
+Implementation: `src/covalent_design/chem/scaffolds.py`
+
+Public API:
+
+- `derive_scaffold(text, input_format="smiles") -> ScaffoldResult`
+- `scaffold_result_to_dict(result) -> dict[str, object]`
+
+Supported input formats:
+
+- `smiles`
+- `molblock`
+
+Output boundary:
+
+- `ScaffoldResult` is project-owned serializable data (frozen dataclass).
+- The public result includes `status`, `input_format`, `rdkit_available`, `scaffold_smiles` (canonical SMILES of the Bemis-Murcko scaffold or acyclic fallback), `atom_count`, `scaffold_type` (`"bemis_murcko"` or `"acyclic_fallback"`), `diagnostics`, `error_code`, `error_message`.
+- Raw RDKit `Mol`, `Atom`, or `Bond` objects must not cross the package seam -scaffold molecule is converted to canonical SMILES before the API boundary.
+
+Scaffold derivation strategy:
+
+- Uses official `rdkit.Chem.Scaffolds.MurckoScaffold.GetScaffoldForMol` API.
+- Acyclic molecules that produce an empty Murcko scaffold (0 atoms in scaffold) fall back to the canonical molecule SMILES with `scaffold_type: "acyclic_fallback"`.
+
+Environment behavior:
+
+- Module import is lightweight-safe -`importlib.import_module` used for RDKit inside function bodies, no hard RDKit import at module level.
+- When RDKit is unavailable: `status = "unavailable"`, `error_code = "SCAFFOLD_RDKIT_UNAVAILABLE"`.
+- When RDKit is available: real Bemis-Murcko derivation with acyclic fallback.
+
+Structured failure codes:
+
+- `SCAFFOLD_RDKIT_UNAVAILABLE`
+- `SCAFFOLD_EMPTY_INPUT`
+- `SCAFFOLD_UNSUPPORTED_FORMAT`
+- `SCAFFOLD_PARSE_FAILED`
+
+Scope exclusions:
+
+- Task 45 scaffold derivation is a chemistry diagnostic; it does not gate training eligibility, family readiness, or any downstream pipeline step.
+- Task 45 does not implement mmCIF writing, PyTorch tensor conversion, docking, model forward, training, inference, evaluation, or real-data directory access.
+
+### Chemistry Module Public Surface (Task 45 Updated)
+
+Task 45 updates `src/covalent_design/chem/__init__.py` to export all three chemistry adapters from a single public surface:
+
+- `normalize_molecule`, `MoleculeNormalizationResult`, `result_to_dict` (Task 44)
+- `compute_descriptors`, `DescriptorResult`, `descriptor_result_to_dict` (Task 45)
+- `derive_scaffold`, `ScaffoldResult`, `scaffold_result_to_dict` (Task 45)
+
+All exports are lightweight-safe -importing `covalent_design.chem` does not trigger an RDKit import.
+
+### PyTorch Tensor Backend Boundary (Task 46)
+
+Purpose: optional heavy-profile conversion from `ModelBatch` metadata to an internal PyTorch tensor runtime object.
+
+Public API:
+
+- `covalent_design.model.torch_backend.check_torch_available() -> TorchBackendStatus`
+- `covalent_design.model.torch_backend.convert_batch_to_torch(batch, device="cpu") -> ContractEnvelope[Optional[TorchTensorBatch]]`
+- `torch_tensor_spec_from_batch(batch, device="cpu") -> TorchTensorSpec`
+- `torch_tensor_spec_to_dict(spec) -> dict`
+- `torch_backend_status_to_dict(status) -> dict`
+
+Boundary rules:
+
+- Importing `covalent_design.model.torch_backend` does not import PyTorch.
+- PyTorch is loaded only inside function bodies with `importlib.import_module("torch")`.
+- Missing PyTorch is represented as `TORCH_BACKEND_UNAVAILABLE` in a structured status or failed `ContractEnvelope`; public APIs do not expose raw `ImportError`.
+- Existing public contract objects remain JSON-serializable and do not contain `torch.Tensor`.
+- `TorchTensorBatch` may contain real `torch.Tensor` values, but it is an internal runtime object only.
+- Public serialization uses `TorchTensorSpec`, which records deterministic shape, dtype, device, record identity, and coordinate-frame metadata.
+- CPU is the default Task 46 device. CUDA/GPU execution is not required for Task 46.
+
+Structured error codes:
+
+- `TORCH_BACKEND_UNAVAILABLE`
+- `TORCH_BACKEND_EMPTY_BATCH`
+- `TORCH_BACKEND_TENSOR_METADATA_MISSING`
+- `TORCH_BACKEND_SHAPE_MISMATCH`
+- `TORCH_BACKEND_DTYPE_UNSUPPORTED`
+- `TORCH_BACKEND_DEVICE_UNAVAILABLE`
+- `TORCH_BACKEND_CONVERSION_FAILED`
+
+Scope exclusions:
+
+- Task 46 does not import PMDM or PocketFlow.
+- Task 46 does not read `D:\codex_work\data`.
+- Task 46 does not implement training, sampling, inference, evaluation, Task 47, Task 48, or Task 49.
+- When PyTorch is unavailable, docs and reports must not claim real PyTorch-backed conversion has executed.
+### PMDM Real Adapter Boundary (Task 47)
+
+Purpose: project-owned smoke boundary for the real PMDM adapter while PMDM remains blocked by `license_unknown`.
+
+Public API:
+
+- `covalent_design.model.pmdm_real_adapter.check_pmdm_available() -> PmdmBackendStatus`
+- `pmdm_backend_status_to_dict(status) -> dict`
+- `pmdm_output_spec_from_config(batch, config) -> PmdmOutputSpec`
+- `pmdm_output_spec_to_dict(spec) -> dict`
+- `validate_real_pmdm_outputs(pmdm_outputs, *, batch, config) -> None`
+- `forward_pmdm_real(*, batch, config, timestep=0.5) -> ContractEnvelope[Optional[ModelForwardOutput]]`
+
+Required PMDM output keys are exactly: `ligand_atom_features`, `protein_atom_features`, `ligand_coords_denoised`, `position_loss`, `atom_type_loss`, `timestep`, and `num_atom`. Optional keys are exactly `ligand_pair_features` and `protein_ligand_pair_features`; they are required only when the corresponding `ModelConfig` feature dimensions are positive, and rejected when disabled.
+
+PMDM is currently unavailable for execution. `check_pmdm_available()` returns structured status with `status: unavailable`, `license_status: unknown`, `reason: license_unknown`, and `import_attempted: false`. The module does not import, load, or execute PMDM/PocketFlow while PMDM is blocked.
+
+No-silent-fallback rule: a PMDM-mode call that reaches `forward_pmdm_real()` returns a failed model `ContractEnvelope` with `PMDM_REAL_LICENSE_BLOCKED`; it must not switch to `non_pmdm_baseline`. Task 48 owns any explicitly selected baseline path.
+
+Structured error codes include `PMDM_REAL_LICENSE_BLOCKED`, `PMDM_REAL_UNAVAILABLE`, `PMDM_REAL_API_MISMATCH`, `PMDM_REAL_MISSING_REQUIRED_KEY`, `PMDM_REAL_MISSING_OPTIONAL_KEY`, `PMDM_REAL_UNEXPECTED_OPTIONAL_KEY`, `PMDM_REAL_UNKNOWN_KEY`, `PMDM_REAL_SHAPE_MISMATCH`, and `PMDM_REAL_UNSERIALIZABLE_PAYLOAD`.
+
+Boundary rules:
+
+- Public status/spec payloads are JSON-serializable project-owned data.
+- Raw PMDM, PocketFlow, PyTorch, RDKit, or PyG objects must not cross this boundary.
+- Task 47 does not implement Task 48 baseline fallback, Task 49 training data, training loops, sampling, inference, evaluation, or real-data-root access.
 ## CLI Boundaries
 
 Future v2 CLIs should be thin wrappers around typed Python interfaces. Planned families:

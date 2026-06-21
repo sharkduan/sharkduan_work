@@ -31,13 +31,15 @@ The first environment task may create files and smoke probes, but it must not tr
 
 RDKit is required only in the heavy v2 profile for:
 
-- molecule parsing/normalization smoke,
-- sanitize/valence checks,
-- scaffold key implementation,
-- descriptor and drug-likeness reporting,
-- generated molecule validity reporting.
+- molecule parsing/normalization smoke (Task 44 IMPLEMENTED -`src/covalent_design/chem/rdkit_normalize.py`),
+- sanitize/valence checks (Task 44 IMPLEMENTED),
+- scaffold key implementation (Task 45 IMPLEMENTED -`src/covalent_design/chem/scaffolds.py`, Bemis-Murcko via `rdkit.Chem.Scaffolds.MurckoScaffold`),
+- descriptor and drug-likeness reporting (Task 45 IMPLEMENTED -`src/covalent_design/chem/rdkit_descriptors.py`, `CalcMolDescriptors` primary path with manual fallback, Lipinski Ro5 + QED diagnostic-only),
+- generated molecule validity reporting (Task 44/45 coverage; future refinement in sampling/evaluation tasks).
 
 RDKit must not be used as the authoritative mmCIF writer unless a later task source-verifies the exact API and accepts that backend.
+
+Task 45 does not promote RDKit to canonical mmCIF writer or sole chemistry authority. Drug-likeness diagnostics (Lipinski Rule of 5, QED) are diagnostic-only and do not gate `status`.
 
 ## PyTorch Use Cases
 
@@ -52,6 +54,20 @@ PyTorch is required only in the heavy v2 profile for:
 
 PyTorch tensors must not replace public serializable contract objects at package seams.
 
+### Task 46 Tensor Backend Boundary
+
+Task 46 implements a PyTorch tensor adapter seam without making PyTorch a default-CI dependency.
+
+- `src/covalent_design/model/torch_backend.py` must import without PyTorch installed.
+- PyTorch is imported lazily from function bodies only.
+- `check_torch_available()` returns structured `available` / `unavailable` status.
+- Missing PyTorch is reported as `TORCH_BACKEND_UNAVAILABLE`, not a raw traceback.
+- `convert_batch_to_torch()` returns a failed contract envelope when PyTorch or required tensor metadata is unavailable.
+- Public metadata (`TorchBackendStatus`, `TorchTensorSpec`) is JSON-serializable.
+- Real `torch.Tensor` values are confined to the internal `TorchTensorBatch` runtime object.
+- CPU is the default device for lightweight Task 46 checks. CUDA/GPU conversion is verified only in the heavy profile.
+
+Current evidence: on 2026-06-19 the `covalent-design-v2` environment had Python 3.10.20, RDKit 2026.03.1, PyTorch 2.12.1+cu126, CUDA 12.6, and one visible NVIDIA GeForce RTX 3050 Laptop GPU. Task 46 verifies both the lightweight structured-unavailable/import-safe boundary and the heavy real PyTorch CUDA conversion path.
 ## CUDA/GPU Policy
 
 - Lightweight smoke path comes first.
@@ -89,8 +105,11 @@ Any version not verified from official sources must be marked `UNVERIFIED`.
 | PyTorch import fails | heavy profile fails, default CI unaffected |
 | CUDA unavailable | CPU smoke may pass, GPU smoke fails explicitly |
 | RDKit import fails | chemistry heavy checks fail explicitly |
+| RDKit scaffold/descriptor/drug-likeness fails | heavy profile scaffold/descriptor checks fail explicitly; drug-likeness is diagnostic-only and does not gate other chemistry status fields |
 | PMDM import/API fails | PMDM path blocked; baseline only if explicitly configured |
 | license unknown | source/dependency cannot enter training path |
+
+**Default CI remains RDKit-free.** Task 45 is a heavy-profile RDKit diagnostics task; it does not install RDKit in default CI and does not gate lightweight checks on RDKit availability. Drug-likeness diagnostic is not a hard beta gate. Task 45 does not implement docking or enter PyTorch.
 
 ## Dependency Status Vocabulary
 

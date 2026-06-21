@@ -19,6 +19,22 @@ Training reuses:
 
 PyTorch tensor adapters may sit behind these contracts, but public contract objects stay serializable.
 
+### PMDM Adapter Output Vocabulary
+
+Task 47 freezes the real-PMDM adapter smoke vocabulary without executing PMDM while its license remains unknown. The seven required keys are:
+
+- `ligand_atom_features`
+- `protein_atom_features`
+- `ligand_coords_denoised`
+- `position_loss`
+- `atom_type_loss`
+- `timestep`
+- `num_atom`
+
+The two optional keys are `ligand_pair_features` and `protein_ligand_pair_features`. They are present only when the corresponding `ModelConfig` feature dimensions are positive, and absent when those dimensions are zero.
+
+When PMDM is blocked by `license_unknown`, PMDM-mode execution records structured unavailability with `status: unavailable`, `reason: license_unknown`, and `import_attempted: false`. It must not silently switch to `non_pmdm_baseline`.
+
 ## Training Objective
 
 V2-beta objective remains aligned with v1:
@@ -76,7 +92,9 @@ Every run records:
 - checkpoint refs,
 - metrics,
 - failure diagnostics,
-- whether PMDM or fallback was used.
+- whether PMDM or fallback was used,
+- PMDM status details when PMDM is unavailable (`status`, `reason`, and `import_attempted`),
+- explicit `baseline_mode` when the Task 48 baseline is selected.
 
 ## Runtime Budget
 

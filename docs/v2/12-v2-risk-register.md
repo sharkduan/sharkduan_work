@@ -6,7 +6,7 @@ Status: hardened planning risk register
 | ID | Category | Risk | Severity | Mitigation | Owner task |
 | --- | --- | --- | --- | --- | --- |
 | V2-R1 | dependency | PyTorch/CUDA/RDKit/PMDM versions do not solve together | P0 | source-verified environment and smoke probes | 37-39 |
-| V2-R2 | dependency | PMDM API differs from fake adapter contract | P0 | real PMDM adapter smoke before training | 47 |
+| V2-R2 | dependency | PMDM API differs from fake adapter contract | P0 | Task 47 real PMDM adapter smoke boundary validates the project-owned 7+2 output vocabulary and structured `license_unknown` unavailability without importing/executing PMDM; real PMDM API execution remains blocked until license is resolved | 47 |
 | V2-R3 | license | data-source license is unknown or blocked | P0 | license audit gate before training | 43 |
 | V2-R4 | data | user-provided local data is missing, misplaced, or outside the approved root | P1 | local real data manual staging requires manifests under `D:\codex_work\data` and rejects paths outside approved roots | 41 |
 | V2-R5 | data | real source records do not cover all six v1 families | P1 | family readiness report with partial/deferred states | 42, 49 |
@@ -16,7 +16,7 @@ Status: hardened planning risk register
 | V2-R9 | sampling | stochastic sampling is non-reproducible | P1 | deterministic smoke sampling and seed recording | 54 |
 | V2-R10 | evaluation | unavailable tools produce fake metrics | P1 | `not_evaluable` status required | 55, 56 |
 | V2-R11 | CI | heavy dependencies leak into default CI | P1 | heavy/manual profile only | 37-39 |
-| V2-R12 | contract | PyTorch/RDKit objects leak into public contracts | P1 | serializable project-owned contract outputs | 44-46 |
+| V2-R12 | contract | PyTorch/RDKit objects leak into public contracts | P1 | serializable project-owned contract outputs; Task 44 normalization, Task 45 scaffold/descriptor adapters all verified as passing no-raw-RDKit-object tests | 44-46 |
 | V2-R13 | scientific validity | beta results overclaimed as publication-grade | P1 | beta release review labels scope | 59 |
 | V2-R14 | pretraining | noncovalent pretraining drags beta schedule | P2 | experimental non-blocking track | 57-58 |
 | V2-R15 | docking | docking engine choice becomes blocking | P2 | feasibility-only gate | 56 |
@@ -50,7 +50,7 @@ Status: hardened planning risk register
 
 ## Training Risks
 
-- PMDM adapter may not match v1 output vocabulary.
+- PMDM adapter may not match v1 output vocabulary; Task 47 now verifies the project-owned 7+2 vocabulary boundary, but real PMDM execution/API matching remains blocked by `license_unknown`.
 - GPU resources may be insufficient.
 - Tiny sweep may produce weak model signal; this is acceptable for beta if pipeline health passes.
 
@@ -69,6 +69,7 @@ Status: hardened planning risk register
 
 - V2-beta is a pipeline milestone, not a publication claim.
 - RDKit validity and docking feasibility are diagnostics unless promoted later.
+- Drug-likeness (Lipinski Ro5, QED) is diagnostic-only per Task 45 acceptance criteria; it does not gate `status` and is not a hard beta gate.
 - Family-level reports must prevent overgeneralizing from one well-covered family.
 
 ## Compute Risks
@@ -87,3 +88,5 @@ Status: hardened planning risk register
 - Treat local real data as untrusted until manifest, checksum, parser, license, and provenance checks pass.
 - Keep real raw data out of git.
 - Keep optional research tasks out of the beta critical path.
+- Drug-likeness diagnostics remain advisory; do not hard-gate on Lipinski Ro5 or QED thresholds.
+- Current project sequence: Task 45 -> Checkpoint V2-C -> Phase V2-D (Task 46+), not Task 49.

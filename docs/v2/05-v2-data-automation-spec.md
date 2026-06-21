@@ -284,13 +284,18 @@ Fixtures: `tests/fixtures/v2/data_conversion/`
 
 ### Supported Parser Targets
 
-Task 42 supports only `covalentin_db`. Other parser targets (`covpdb`, `covbinder_in_pdb`) return `V2_CONVERSION_UNSUPPORTED_PARSER`.
+Task 42 supports all v2-beta parser targets: `covalentin_db`, `covpdb`, and `covbinder_in_pdb`.
 
-### TSV Parser
+### Source Parsers
 
-Parses tab-separated source data files with required columns:
+The conversion module supports both real raw-source formats and committed
+synthetic fixtures:
 
-`pdb_id`, `uniprot_id`, `residue`, `residue_number`, `ligand`, `ligand_name`, `bond_type`, `warhead_type`
+- CovalentInDB real CSV (`Covalent_Complex_Records.csv`): maps `ID`, `PDB`, `Proteins`, `Protein_name`, `Resi_*`, `Warhead`, and `Reaction` into v1-compatible `SourceIngestRecord` fields.
+- CovBinderInPDB real CSV (`CovBinderInPDB_2022Q4_AllRecords.csv`): maps `pdb_id`, residue/chain fields, binder identifiers, warhead name, and smiles/adduct metadata.
+- CovPDB real extracted PDB tree (`CovPDB_complexes/`): parses PDB `LINK` records from the extracted local directory while preserving the checksum-verified archive path in record provenance.
+- v1-compatible tab-separated bridge files for all three parser targets.
+- Legacy 8-column synthetic covalentin_db TSV fixtures: `pdb_id`, `uniprot_id`, `residue`, `residue_number`, `ligand`, `ligand_name`, `bond_type`, `warhead_type`.
 
 - Missing required columns → `V2_CONVERSION_MISSING_COLUMNS`.
 - Individual row parse failures → `V2_CONVERSION_ROW_PARSE_ERROR` with `row_index` and `missing_fields` in details; valid rows still converted.
@@ -344,7 +349,7 @@ All errors use `owner = "data"` with structured `V2_CONVERSION_*` codes:
 
 ### Scope Exclusions
 
-Task 42 does not: access network, download raw data, produce training artifacts, decide license eligibility, decide training eligibility (Task 43 scope), produce family readiness reports, produce split assignments, create filesystem artifacts during conversion, or support parser targets beyond `covalentin_db`.
+Task 42 does not: access network, download raw data, produce training artifacts, decide license eligibility, decide training eligibility (Task 43 scope), produce family readiness reports, produce split assignments, or create filesystem artifacts during conversion.
 
 ### Deterministic Verification
 

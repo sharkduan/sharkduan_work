@@ -126,10 +126,10 @@ python scripts/v2_smoke_check.py --profile lightweight
 
 **Verified on 2026-06-16 (this host, Windows 11, no heavy deps):**
 
-- `pytest tests/v2/test_smoke_check.py -q` — all tests passed
-- `python scripts/v2_smoke_check.py --profile lightweight` — exit 0
-- `python scripts/v2_smoke_check.py --profile heavy` — exit 2 (structured, `exit_reason: heavy_dependency_unavailable`)
-- `python scripts/v2_smoke_check.py --profile cpu` — exit 3 (structured, `exit_reason: unsupported_profile`)
+- `pytest tests/v2/test_smoke_check.py -q` -all tests passed
+- `python scripts/v2_smoke_check.py --profile lightweight` -exit 0
+- `python scripts/v2_smoke_check.py --profile heavy` -exit 2 (structured, `exit_reason: heavy_dependency_unavailable`)
+- `python scripts/v2_smoke_check.py --profile cpu` -exit 3 (structured, `exit_reason: unsupported_profile`)
 
 **Notes:** Heavy profile may be manual until the environment is available.
 
@@ -184,7 +184,7 @@ $env:PYTHONPATH='src'
 python -m pytest tests/data/test_v2_manifests.py -q
 ```
 
-**Verified on 2026-06-16:** `pytest tests/data/test_v2_manifests.py -q` — 29 passed.
+**Verified on 2026-06-16:** `pytest tests/data/test_v2_manifests.py -q` - 29 passed.
 
 **Notes:** No download or staging in this task. Task 41 (staging) and Task 43 (license audit) build on this manifest.
 
@@ -224,7 +224,7 @@ python -m covalent_design.data.cli.v2_stage_source --manifest tests/fixtures/v2/
 rg -n "Local Real Data Policy|D:\\codex_work\\data|No Agent Network Download Rule|Git Tracking Rule" docs/v2/05-v2-data-automation-spec.md
 ```
 
-**Verified on 2026-06-16:** `pytest tests/data/test_v2_intake.py -q` — 19 passed. CLI exits 0 for valid download-mode manifest representation, non-zero with structured JSON for unknown source.
+**Verified on 2026-06-16:** `pytest tests/data/test_v2_intake.py -q` - 19 passed. CLI exits 0 for valid download-mode manifest representation, non-zero with structured JSON for unknown source.
 
 **Notes:** Task 41 is not permission for agents to download real source data. `intake_mode = "download"` records source-origin metadata for a user-provided local file only. Automatic download is a future optional capability that would require a separate approved task, explicit user approval, and license evidence.
 
@@ -253,11 +253,11 @@ rg -n "Local Real Data Policy|D:\\codex_work\\data|No Agent Network Download Rul
 - TSV parser validates required columns (`pdb_id`, `uniprot_id`, `residue`, `residue_number`, `ligand`, `ligand_name`, `bond_type`, `warhead_type`); missing columns fail with `V2_CONVERSION_MISSING_COLUMNS`.
 - Individual row parse failures use `V2_CONVERSION_ROW_PARSE_ERROR` with `row_index`/`missing_fields` details; valid rows are still converted.
 - Empty files and header-only files return empty tuple without error.
-- Residue field parsing (`CYS145` → `CYS`, `145`) is validated; unparseable residues fail the row.
+- Residue field parsing (`CYS145` ->`CYS`, `145`) is validated; unparseable residues fail the row.
 - 12 structured `V2_CONVERSION_*` error codes, all with `owner = "data"`, including forged-envelope rejection via `V2_CONVERSION_INVALID_STAGING_EVIDENCE`.
-- Zero network access — enforced by socket/urllib monkeypatch in tests.
+- Zero network access -enforced by socket/urllib monkeypatch in tests.
 - No filesystem artifacts written during conversion (purely in-memory).
-- No training artifacts, license eligibility decisions, or split assignments are produced — Task 43 owns training eligibility.
+- No training artifacts, license eligibility decisions, or split assignments are produced -Task 43 owns training eligibility.
 - Deterministic: same staging input produces identical `SourceIngestRecord` tuple.
 - Output is JSON-serializable via `dataclasses.asdict()`.
 
@@ -268,9 +268,9 @@ $env:PYTHONPATH='src'
 python -m pytest tests/data/test_v2_conversion.py -q
 ```
 
-**Verified on 2026-06-16:** `pytest tests/data/test_v2_conversion.py -q` — tests pass.
+**Verified on 2026-06-16:** `pytest tests/data/test_v2_conversion.py -q` - tests pass.
 
-**Notes:** Keep source parsing separate from training. Task 42 must not perform network download and must not treat local files as trusted without Task 41 staging evidence. `pending_download` is not convertible — download the source first, then re-stage with manual intake mode. Task 42 produces `SourceIngestRecord` objects that feed directly into v1 `normalize_linkages()` and `normalize_with_identity_resolution()`.
+**Notes:** Keep source parsing separate from training. Task 42 must not perform network download and must not treat local files as trusted without Task 41 staging evidence. `pending_download` is not convertible -download the source first, then re-stage with manual intake mode. Task 42 produces `SourceIngestRecord` objects that feed directly into v1 `normalize_linkages()` and `normalize_with_identity_resolution()`.
 
 ### Task 43: Design License And Provenance Audit Gate
 
@@ -334,6 +334,14 @@ rg -n "no download|no conversion|no training|no sampling|Task 44" docs/v2/10-v2-
 - no source with unknown/blocked license enters training eligibility,
 - no real raw data is committed to git.
 
+**Corrected real local data evidence on 2026-06-19:** `D:\codex_work\data` was inspected through the formal raw-root ETL command:
+
+```powershell
+python -m covalent_design.data.cli.v2_run_real_etl --raw-root D:\codex_work\data --staging-root data/v2/staging --out-root data/v2/processed --report-root data/v2/reports --source all
+```
+
+The repaired command validates UTF-8/UTF-8-BOM source manifests, stages checksum-verified manual sources, converts all three real sources in memory, runs the license/provenance gate, and writes `data/v2/processed/v2_real_etl_manifest.json` plus per-source local JSONL artifacts. Current machine evidence is `data/v2/reports/window_c_real_etl_report.json`; review narrative is `docs/reviews/v2-real-data-import-repair-2026-06-19.md`. Verdict: **data-intake prerequisite complete for future Task 49** for CovalentInDB, CovPDB, and CovBinderInPDB, subject to Task 49 consuming only the processed manifest/JSONL artifacts and preserving the `manual_exempt` audit status when the project sequence later reaches Task 49. Task 49 follows Checkpoint V2-C in the current project sequence; do not enter Task 49 before Task 45 and Checkpoint V2-C.
+
 ## Phase V2-C: Chemistry / RDKit Heavy Adapters
 
 ### Task 44: Design RDKit Molecule Normalization Interface
@@ -391,7 +399,7 @@ python scripts/v2_smoke_check.py --profile lightweight
   - The remaining unavailable heavy dependencies were PyTorch, CUDA, PMDM, and PocketFlow; these are outside Task 44.
 
 **Notes:** Tests are written so default CI can skip heavy checks explicitly. Task 44 is verified for the RDKit normalization adapter in a newly created dedicated conda environment. This evidence does not claim that the later full heavy stack is ready; PyTorch, CUDA, PMDM, and PocketFlow remain future task concerns.
-### Task 45: Design RDKit Scaffold, Descriptor, And Drug-Likeness Interface
+### Task 45: Design RDKit Scaffold, Descriptor, And Drug-Likeness Interface (IMPLEMENTED)
 
 **Goal:** Provide chemistry diagnostics for data and generated outputs.
 
@@ -401,15 +409,21 @@ python scripts/v2_smoke_check.py --profile lightweight
 - `src/covalent_design/chem/scaffolds.py`
 - `tests/chem/test_rdkit_descriptors.py`
 - `tests/chem/test_scaffolds.py`
+- `src/covalent_design/chem/__init__.py` (updated to export Task 45 adapters)
 
 **Dependencies:** Task 44.
 
 **Acceptance:**
 
-- Scaffold key derivation is source-verified or marked unavailable.
-- Descriptor report is deterministic.
-- Drug-likeness output is diagnostic, not a hard beta gate.
+- Scaffold key derivation uses official Bemis-Murcko API (`rdkit.Chem.Scaffolds.MurckoScaffold.GetScaffoldForMol`) and reports `unavailable` when RDKit is absent.
+- Descriptor report is deterministic; 11 public-facing descriptors mapped via `_DESCRIPTOR_KEY_MAP` (molecular_weight, logp, num_h_acceptors, num_h_donors, num_rotatable_bonds, tpsa, num_rings, num_heavy_atoms, fraction_csp3, num_aromatic_rings, molar_refractivity).
+- Drug-likeness output (Lipinski Rule of 5, QED) is diagnostic-only: result `status` remains `"ok"` even when molecules fail drug-likeness thresholds.
 - No model forward/loss code imports RDKit.
+- Default CI remains RDKit-free: module imports are lightweight-safe (lazy `importlib.import_module`), no hard RDKit import at module level.
+- No raw RDKit `Mol`, `Atom`, or `Bond` objects cross the package seam -all public output is `DescriptorResult` / `ScaffoldResult` containing only Python built-in types.
+- Task 45 does not implement docking.
+- Task 45 does not import or use PyTorch.
+- Task 45 does not read the real data root (`D:\codex_work\data`).
 
 **Verification:**
 
@@ -418,15 +432,41 @@ $env:PYTHONPATH='src'
 python -m pytest tests/chem/test_rdkit_descriptors.py tests/chem/test_scaffolds.py -q
 ```
 
-**Notes:** Do not implement docking here.
+**Task 45 verification evidence on 2026-06-19:**
+
+- Lightweight interpreter (no RDKit installed):
+  - `python -m pytest tests/chem/test_rdkit_descriptors.py -q` - 6 passed, 9 skipped (RDKit unavailable).
+  - `python -m pytest tests/chem/test_scaffolds.py -q` - 6 passed, 8 skipped (RDKit unavailable).
+  - All lightweight tests verify: module import is safe, `unavailable` status is structured, empty/unsupported input fails cleanly, output is JSON-serializable and deterministic, no raw RDKit objects leak.
+- Heavy conda environment (`covalent-design-v2`, RDKit 2026.03.1, Python 3.10.20):
+  - `conda run -n covalent-design-v2 python -m pytest tests/chem/test_rdkit_descriptors.py -q` - 15 passed (6 lightweight + 9 heavy).
+  - `conda run -n covalent-design-v2 python -m pytest tests/chem/test_scaffolds.py -q` - 14 passed (6 lightweight + 8 heavy).
+  - Heavy tests verify: core descriptors computed, deterministic output, drug-likeness stays diagnostic-only (Lipinski Rule of 5 + QED), drug-likeness diagnostics are JSON-serializable, invalid molecule input returns structured failure, molblock input format supported, different molecules produce different descriptors, Bemis-Murcko scaffold derivation works, scaffold output is reproducible and JSON-serializable, acyclic fallback for molecules with no ring scaffold, no raw RDKit objects in any output path, guard tests ensure real execution when RDKit is available.
+- Scaffold key derivation: source-verified against official RDKit `MurckoScaffold.GetScaffoldForMol` API (module `rdkit.Chem.Scaffolds.MurckoScaffold`). Acyclic molecules that produce an empty Murcko scaffold fall back to canonical molecule SMILES with `scaffold_type: "acyclic_fallback"`.
+- Descriptor computation: uses `rdkit.Chem.Descriptors.CalcMolDescriptors` as primary path, with a manual fallback via individual `rdkit.Chem.Descriptors` and `rdkit.Chem.Crippen` functions when the bulk API is unavailable.
+- Drug-likeness: Lipinski Rule of 5 violations are counted (MW>500, LogP>5, HBD>5, HBA>10); QED is computed from `rdkit.Chem.QED.qed()`. Neither gates `status: "ok"`.
+
+**Notes:** Task 45 is a heavy-profile RDKit diagnostics task, not a training gate. Drug-likeness diagnostic is not a hard beta gate. Do not implement docking here. Task 45 does not promote RDKit to canonical mmCIF writer or sole chemistry authority. Current project sequence is Task 45 -> Checkpoint V2-C, not Task 49.
 
 ### Checkpoint V2-C: Chemistry Gate
 
 **Goal:** Confirm RDKit-backed checks are isolated, optional in CI, and useful for reports.
 
+**Required evidence:**
+
+- RDKit normalization adapter (Task 44) and scaffold/descriptor/drug-likeness adapters (Task 45) exist,
+- all lightweight tests pass without RDKit installed,
+- all heavy tests pass with RDKit available,
+- no raw RDKit objects cross the package seam,
+- drug-likeness remains diagnostic-only and does not gate `status`,
+- default CI remains RDKit-free,
+- no docking, PyTorch, or real data root access exists in chemistry adapters.
+
+**Task 45 evidence on 2026-06-19:** Task 45 implemented and verified (see Task 45 block above for test numbers). Scaffold derivation source-verified against official Bemis-Murcko API. Descriptors computed with CalcMolDescriptors primary path and manual fallback. Drug-likeness (Lipinski Ro5 + QED) is diagnostic-only; neither gates `status: "ok"`. Current project sequence is Task 45 -> Checkpoint V2-C, not Task 49. V2-B real-data evidence remains valid.
+
 ## Phase V2-D: Tensor / PMDM / Baseline Training Foundation
 
-### Task 46: Design PyTorch Tensor Backend Boundary
+### Task 46: Design PyTorch Tensor Backend Boundary (IMPLEMENTED)
 
 **Goal:** Add a tensor adapter seam behind existing v1 contracts.
 
@@ -454,9 +494,19 @@ python -m pytest tests/model/test_torch_backend.py -q
 
 **Notes:** CPU smoke precedes GPU work.
 
+### Task 46 verification evidence on 2026-06-19
+
+- Lightweight interpreter: `python -m pytest tests/model/test_torch_backend.py -q` - 15 passed, 4 skipped because PyTorch is not installed.
+- Heavy conda environment (`covalent-design-v2`, Python 3.10.20, RDKit 2026.03.1): PyTorch 2.12.1+cu126 imports successfully, `torch.cuda.is_available()` is `True`, CUDA version is 12.6, and the visible device is `NVIDIA GeForce RTX 3050 Laptop GPU`.
+- Heavy conda environment: `$env:PYTHONPATH='src'; conda run -n covalent-design-v2 python -m pytest tests/model/test_torch_backend.py -q` - 19 passed. This verifies real torch-backed conversion, CUDA device availability, structured dtype/device failures, facade exports, aliases, and status serialization while preserving lightweight structured-unavailable behavior.
+- `TorchTensorBatch` is an internal runtime object; public metadata is exposed through `TorchTensorSpec` and `torch_tensor_spec_to_dict()`.
+- Task 46 installs PyTorch only in the heavy manual `covalent-design-v2` environment. It does not install PMDM, PocketFlow, or CUDA graph dependencies. It does not implement Task 47, Task 48, Task 49, training, sampling, inference, evaluation, or real-data access.
+
 ### Task 47: Design Real PMDM Adapter Smoke Path
 
-**Goal:** Validate the real PMDM adapter against the v1 PMDM output vocabulary.
+**Status:** Implemented as a license-blocked smoke boundary. Real PMDM execution remains blocked by `license_unknown`.
+
+**Goal:** Validate the real PMDM adapter boundary against the v1 PMDM output vocabulary without importing, loading, or executing PMDM while PMDM is blocked.
 
 **Files/modules:**
 
@@ -468,19 +518,23 @@ python -m pytest tests/model/test_torch_backend.py -q
 
 **Acceptance:**
 
-- Real PMDM import/API status is reported.
-- Output includes the seven required PMDM keys.
-- Optional keys follow existing config behavior.
-- PMDM unavailable blocks PMDM mode but does not silently switch baseline.
+- Real PMDM import/API status is reported through `check_pmdm_available()` and `pmdm_backend_status_to_dict()`.
+- While PMDM license is unknown, status is structured as `status: unavailable`, `license_status: unknown`, `reason: license_unknown`, and `import_attempted: false`.
+- The seven required PMDM output keys are `ligand_atom_features`, `protein_atom_features`, `ligand_coords_denoised`, `position_loss`, `atom_type_loss`, `timestep`, and `num_atom`.
+- Optional keys `ligand_pair_features` and `protein_ligand_pair_features` follow existing config behavior: present when the corresponding feature dimension is positive, absent when it is zero.
+- PMDM unavailable blocks PMDM mode and returns `PMDM_REAL_LICENSE_BLOCKED`; it does not silently switch to baseline mode.
+- Public status/spec payloads are project-owned serializable data and contain no raw PMDM, PocketFlow, PyTorch, RDKit, or PyG objects.
+- Task 47 does not implement Task 48, Task 49, training, sampling, inference, evaluation, or real-data access.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/model/test_pmdm_real_adapter.py -q
+python -m pytest tests/model/test_pmdm_adapter.py tests/model/test_torch_backend.py tests/model/test_pmdm_real_adapter.py -q
 ```
 
-**Notes:** No full training in this task.
+**Notes:** No full training in this task. PMDM execution remains blocked until upstream license status is resolved.
 
 ### Task 48: Design Explicit Non-PMDM Baseline Fallback
 
@@ -520,6 +574,8 @@ python -m pytest tests/model/test_non_pmdm_baseline.py -q
 - PMDM adapter smoke reports the seven required PMDM keys or structured unavailability,
 - baseline fallback is labeled `non_pmdm_baseline`,
 - PMDM and baseline modes cannot be silently confused.
+
+Current status: Task 46 verified; Task 47 implemented as `license_unknown` structured-unavailable smoke boundary; Task 48 remains planned explicit baseline fallback.
 
 ## Phase V2-E: Training Loop And Tuning
 
