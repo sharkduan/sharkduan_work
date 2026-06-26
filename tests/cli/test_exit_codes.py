@@ -923,9 +923,15 @@ class TestNoTask31_32_33Cli(unittest.TestCase):
         import covalent_design.evaluation.reports as mod
         self.assertFalse(hasattr(mod, "main"))
 
-    def test_no_evaluation_cli_package(self):
+    def test_evaluation_cli_package_only_contains_v2_task55_cli(self):
         eval_dir = REPO_ROOT / "src" / "covalent_design" / "evaluation" / "cli"
-        self.assertFalse(eval_dir.is_dir())
+        self.assertTrue(eval_dir.is_dir())
+        cli_modules = sorted(
+            path.stem
+            for path in eval_dir.glob("*.py")
+            if path.name != "__init__.py"
+        )
+        self.assertEqual(["v2_evaluate"], cli_modules)
 
     def test_evaluation_init_does_not_export_cli(self):
         import covalent_design.evaluation as pkg

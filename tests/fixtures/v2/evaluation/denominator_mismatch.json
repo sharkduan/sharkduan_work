@@ -1,0 +1,38 @@
+{
+  "attempted_sample_count": 4,
+  "baseline_mode": "non_pmdm_baseline",
+  "checkpoint_manifest_ref": {
+    "bytes": 123,
+    "format": "manifest_ref",
+    "role": "checkpoint_manifest",
+    "schema_version": "1",
+    "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uri": "manifest-ref://v2/evaluation/checkpoint_manifest"
+  },
+  "checkpoint_ref": {
+    "bytes": 123,
+    "format": "manifest_ref",
+    "role": "checkpoint",
+    "schema_version": "1",
+    "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uri": "manifest-ref://v2/evaluation/checkpoint"
+  },
+  "environment_manifest_ref": {
+    "bytes": 123,
+    "format": "manifest_ref",
+    "role": "environment_manifest",
+    "schema_version": "1",
+    "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uri": "manifest-ref://v2/evaluation/environment_manifest"
+  },
+  "family_filter": [],
+  "invalid_decode_diagnostics": [],
+  "invalid_sample_count": 2,
+  "random_seed": 42,
+  "requested_sample_count": 6,
+  "request_id": "v2-eval-001",
+  "sampling_system_failure_count": 1,
+  "sampling_system_failures": [],
+  "split_name": "test",
+  "valid_sample_count": 3
+}

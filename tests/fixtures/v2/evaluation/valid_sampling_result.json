@@ -1,0 +1,74 @@
+{
+  "attempted_sample_count": 5,
+  "baseline_mode": "non_pmdm_baseline",
+  "checkpoint_manifest_ref": {
+    "bytes": 123,
+    "format": "manifest_ref",
+    "role": "checkpoint_manifest",
+    "schema_version": "1",
+    "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uri": "manifest-ref://v2/evaluation/checkpoint_manifest"
+  },
+  "checkpoint_ref": {
+    "bytes": 123,
+    "format": "manifest_ref",
+    "role": "checkpoint",
+    "schema_version": "1",
+    "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uri": "manifest-ref://v2/evaluation/checkpoint"
+  },
+  "contract_version": "v2-beta",
+  "docking_status": "not_run",
+  "environment_manifest_ref": {
+    "bytes": 123,
+    "format": "manifest_ref",
+    "role": "environment_manifest",
+    "schema_version": "1",
+    "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uri": "manifest-ref://v2/evaluation/environment_manifest"
+  },
+  "evaluation_status": "not_implemented",
+  "export_status": "not_implemented",
+  "family_filter": [],
+  "invalid_decode_diagnostics": [
+    {
+      "contract_version": "v2-beta",
+      "failure_reason": "LIGAND_CHEMISTRY_INVALID",
+      "message": "invalid ligand",
+      "request_id": "v2-eval-001",
+      "role": "v2_invalid_decode_diagnostic",
+      "sample_id": 1,
+      "schema_version": "1"
+    },
+    {
+      "contract_version": "v2-beta",
+      "failure_reason": "GEOMETRY_CHECK_FAIL",
+      "message": "bad geometry",
+      "request_id": "v2-eval-001",
+      "role": "v2_invalid_decode_diagnostic",
+      "sample_id": 3,
+      "schema_version": "1"
+    }
+  ],
+  "invalid_sample_count": 2,
+  "random_seed": 42,
+  "requested_sample_count": 6,
+  "request_id": "v2-eval-001",
+  "role": "v2_sampling_result",
+  "sampling_system_failure_count": 1,
+  "sampling_system_failures": [
+    {
+      "contract_version": "v2-beta",
+      "failure_category": "timeout",
+      "message": "sampler timeout",
+      "request_id": "v2-eval-001",
+      "retry_count": 0,
+      "role": "v2_sampling_system_failure",
+      "sample_id": 0,
+      "schema_version": "1"
+    }
+  ],
+  "schema_version": "1",
+  "split_name": "test",
+  "valid_sample_count": 3
+}
