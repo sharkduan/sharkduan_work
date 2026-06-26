@@ -1,0 +1,8 @@
+﻿{
+  "SMOKE-TRAIN-CYS": {"split_name": "train"},
+  "SMOKE-TRAIN-LYS": {"split_name": "train"},
+  "SMOKE-VAL-CYS": {"split_name": "val"},
+  "SMOKE-VAL-SER": {"split_name": "val"},
+  "SMOKE-TEST-CYS": {"split_name": "test"},
+  "SMOKE-TEST-LYS": {"split_name": "test"}
+}

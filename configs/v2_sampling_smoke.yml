@@ -1,0 +1,14 @@
+﻿schema_version: "1.0"
+contract_version: "v2-beta"
+profile: "v2_sampling_smoke"
+execution_mode: "fixture"
+records_path: "tests/fixtures/v2/sampling/records.jsonl"
+split_index_path: "tests/fixtures/v2/sampling/split_index.json"
+split_name: "test"
+family_filter: []
+random_seed: 42
+sample_count: 6
+output_root: "local-only-v2-sampling-smoke-output"
+baseline_mode: "non_pmdm_baseline"
+max_retries: 1
+retry_on_categories: ["crash", "timeout"]

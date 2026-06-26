@@ -27,6 +27,21 @@ from covalent_design.inference.run_manifest import (
 from covalent_design.inference.sampler import (
     SamplingFailureSignal,
 )
+from covalent_design.inference.v2_sampling import (
+    V2InvalidDecodeDiagnostic,
+    V2SamplingRequest,
+    V2SamplingResult,
+    V2SamplingSystemFailure,
+    build_v2_sampling_request,
+    hash_v2_sampling_request,
+    hash_v2_sampling_result,
+    run_deterministic_fixture_sampling,
+    serialize_v2_sampling_request,
+    serialize_v2_sampling_result,
+    v2_sampling_request_to_dict,
+    v2_sampling_result_to_dict,
+    validate_v2_sampling_request,
+)
 
 __all__ = [
     "LigandSizeControl",
@@ -37,6 +52,19 @@ __all__ = [
     "SamplingFailureSignal",
     "SamplingPolicy",
     "ValidatedRequest",
+    "V2InvalidDecodeDiagnostic",
+    "V2SamplingRequest",
+    "V2SamplingResult",
+    "V2SamplingSystemFailure",
+    "build_v2_sampling_request",
+    "hash_v2_sampling_request",
+    "hash_v2_sampling_result",
+    "run_deterministic_fixture_sampling",
+    "serialize_v2_sampling_request",
+    "serialize_v2_sampling_result",
+    "v2_sampling_request_to_dict",
+    "v2_sampling_result_to_dict",
+    "validate_v2_sampling_request",
     "adapt_complex_export_failure",
     "export_covalent_complex_result",
     "generate",
