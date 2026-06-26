@@ -37,7 +37,7 @@ Required fields:
 - `profile`: enum `lightweight` or `heavy`.
 - `platform`: string.
 - `python_version`: string.
-- `dependency_statuses`: object keyed by dependency name, with status enum `available`, `unavailable`, `unverified`, or `not_required`.
+- `dependency_statuses`: object keyed by dependency name, with status enum `available`, `unavailable`, `not_checked`, or `failed`.
 - `generated_at`: ISO-8601 timestamp or deterministic fixture timestamp.
 
 Optional fields, required only when available or heavy profile requests them:
@@ -47,8 +47,8 @@ Optional fields, required only when available or heavy profile requests them:
 - `gpu_name`: string or null.
 - `pytorch_version`: string or null.
 - `rdkit_version`: string or null.
+- `rdkit_version`: string or null.
 - `pmdm_status`: enum `available`, `unavailable`, `api_mismatch`, `license_unknown`, or `not_required`.
-- `baseline_mode`: enum `pmdm`, `non_pmdm_baseline`, or `not_selected`.
 - `dependency_lock_hash`: `sha256:<hex>` or null.
 
 Misuse guard: `lightweight` profile must not hard-import heavyweight optional dependencies. Missing heavy dependencies are data in `dependency_statuses`, not import crashes.
@@ -76,9 +76,9 @@ Required fields:
 - `version scope`
 - `license status`
 - `verification date`
+- `status`: enum `verified`, `unverified`, `blocked`, or
+- `verification date`
 - `status`: enum `verified`, `unverified`, `blocked`, or `not required yet`
-- `owning task`
-
 Misuse guard: unverified rows cannot be cited as implemented contracts and must remain behind adapter boundaries or future-task notes.
 
 ### SourceLicenseAudit
@@ -129,6 +129,110 @@ Structured error categories:
 - blocked or unknown license status
 - `manual_exempt` on download intake
 - staged evidence versus converted output mismatches for `license_audit_ref`, checksum, local path provenance, or source provenance
+
+### V2TrainingDatasetIndex
+
+Purpose: Task 49 split-specific training eligibility index for V2-beta.
+
+Implementation: `src/covalent_design/training/v2_dataset.py`
+
+Producer: `prepare_v2_dataset(records_path, split_index_path, split_name, *, visual_check_index_path, quality_report_path, family_readiness_report_path, license_gate_report_path, policy=None)`. Consumer: Task 50 training loop planning and later training manifests.
+
+Serialization: deterministic JSON-compatible dataclasses. The API returns `ContractEnvelope[V2TrainingDatasetIndex]` and builds exactly one split per call.
+
+`V2TrainingRecordEntry` preserves `record_id`, residue-reaction family, quality tier, visual status, license status, family readiness status, fallback/manual review metadata, source name, intake mode, and artifact refs.
+
+`V2ExcludedRecord` preserves `record_id`, deterministic `primary_reason`, all applicable reasons, residue-reaction family, quality tier, visual status, license status, family readiness status, split assignment, source name, intake mode, and source license `reason_codes` as `license_reason_codes`.
+
+Task 49 eligibility rules:
+
+- `manual_exempt` remains distinct from `allowed`.
+- `manual_exempt` is eligible only when record metadata and license report both prove manual intake and the license report has `training_eligible=true`.
+- `manual_exempt` with `training_eligible=false` is excluded with `excluded_manual_exempt_audit_failed`.
+- Task 49 performs minimum artifact role presence validation and excludes records with no usable artifact roles as `excluded_missing_artifact_roles`.
+- Task 49 does not validate artifact path existence, readability, bytes, or checksums; Task 50 must fail before tensor construction on those checks.
+- Task 49 does not compute masks, losses, model forward passes, checkpoints, or training artifacts.
+
+Task 50 boundary: V2 training must consume the Task 49 `V2TrainingDatasetIndex` or an equivalent validated envelope. It must not bypass Task 49 by calling the v1 `prepare_dataset()` source directly.
+### V2TrainLoopConfig And V2TrainingSummary
+
+Purpose: Task 50 CPU/GPU training smoke-loop boundary for V2-beta.
+
+Implementation: `src/covalent_design/training/v2_train_loop.py` and CLI `python -m covalent_design.training.cli.v2_train --config <config.yml>`.
+
+Producer: `run_v2_train(config)` accepts either a config path or mapping and returns `ContractEnvelope[V2TrainingSummary]`. The public `covalent_design.training` facade preserves `run_v2_train`, `V2TrainLoopConfig`, `V2TrainingSummary`, and `v2_training_summary_to_dict` as lazy exports to avoid package import side effects.
+
+Input contract: the config must provide Task 49 gate inputs (`records_path`, `split_index_path`, `visual_check_index_path`, `quality_report_path`, `family_readiness_report_path`, `license_gate_report_path`, and `split_name`) plus `device` and explicit `model_mode` (`pmdm` or `non_pmdm_baseline`). Task 50 does not accept finalized records alone as training eligibility proof.
+
+Preflight contract: after Task 49 builds `V2TrainingDatasetIndex`, Task 50 validates each eligible artifact reference for path existence, readability, byte count, and SHA-256 checksum before tensor construction. Structured error codes are `V2_TRAIN_ARTIFACT_MISSING`, `V2_TRAIN_ARTIFACT_UNREADABLE`, `V2_TRAIN_ARTIFACT_BYTE_MISMATCH`, and `V2_TRAIN_ARTIFACT_CHECKSUM_MISMATCH`.
+
+Model-path contract: `model_mode=pmdm` checks the PMDM availability boundary and does not auto-switch to baseline when PMDM is blocked. `model_mode=non_pmdm_baseline` records `baseline_mode="non_pmdm_baseline"`, `is_pmdm=false`, and the baseline warning. CPU smoke does not require CUDA. GPU config requires CUDA and reports `V2_TRAIN_CUDA_UNAVAILABLE` if unavailable.
+
+Summary contract: `V2TrainingSummary` is deterministic JSON and includes `dataset`, `artifact_preflight`, `model_path`, `phases`, `loss_report`, `denominator_status`, `warnings`, and empty `publication_claims`. Task 50 does not write Task 51 checkpoint manifests, model weights, sampling outputs, inference artifacts, or evaluation artifacts.
+### V2SamplingRequest And V2SamplingResult
+
+Purpose: Task 53 package-interface contract for beta sampling requests and result summaries. Task 53 defines schema, validation, deterministic serialization, and failure taxonomy only; it does not execute sampling or write artifacts.
+
+Implementation: `src/covalent_design/inference/v2_sampling.py`
+
+Producer: request builders or later sampling CLIs. Consumer: Task 54 deterministic sampling smoke, Task 55 evaluation, and release reviews.
+
+Serialization: deterministic JSON with sorted keys and compact separators. Hash helpers return `sha256:<hex>`.
+
+`V2SamplingRequest` required contract fields:
+
+- `request_id`
+- `checkpoint_ref`
+- `checkpoint_manifest_ref`
+- `environment_manifest_ref`
+- exactly one selector: `split_name` (`train`, `val`, `test`) or explicit `record_ids`
+- `random_seed`
+- `sample_count`
+- `output_root`
+- `baseline_mode`: `pmdm` or `non_pmdm_baseline`
+- `generation_mode`: `reactive_site`
+
+Optional request fields:
+
+- `family_filter`
+- `max_retries`
+- `retry_on_categories`
+
+Misuse guards:
+
+- `reference_ligand` generation is rejected; Task 53 remains reactive-site only.
+- selector absence and selector conflict return distinct structured errors.
+- retry policy categories must remain within the existing sampling system failure vocabulary and must not include terminal `retry_exhausted`.
+- `output_root` is not created by Task 53.
+
+`V2SamplingResult` required contract fields:
+
+- checkpoint, checkpoint-manifest, and environment-manifest refs
+- baseline mode, selector metadata, random seed
+- requested, attempted, valid, invalid, and sampling-system-failure counts
+- invalid decode diagnostics
+- sampling system failures
+- export, docking, and evaluation statuses
+
+Count conservation:
+
+```text
+valid_sample_count + invalid_sample_count == attempted_sample_count
+attempted_sample_count + sampling_system_failure_count == requested_sample_count
+```
+
+Failure taxonomy is explicit and non-interchangeable:
+
+- request validation failure
+- sampling system failure
+- invalid generated sample
+- export failure
+- docking not run
+- evaluation artifact corruption
+
+Task boundary: Task 53 performs no model forward, true sampling, result export, mmCIF writing, docking, evaluation, real-data-root access, or heavyweight dependency import. Task 54 consumes this contract to prove deterministic sampling smoke execution.
+
+Task 54 fixture runner: `run_deterministic_fixture_sampling(request, fixture_records, fixture_split_index=None) -> V2SamplingResult` is a lightweight, in-memory smoke helper. It accepts already-loaded fixture records and an optional fixture split index, applies split or record-id selectors plus `family_filter`, produces deterministic valid/invalid/system-failure accounting from the request seed, and returns a `V2SamplingResult`. It does not read `D:\codex_work\data`, does not read or write `data/v2`, does not create `output_root`, and does not implement Task 55 evaluation, Task 56 docking, mmCIF export, or real model sampling.
 
 ### V2DataIntakeManifest
 
@@ -257,16 +361,54 @@ Verification (2026-06-16): `python -m pytest tests/data/test_v2_conversion.py -q
 - `status`
 - `reason`
 
-### V2TrainingRunManifest
+### V2CheckpointExperimentManifest
 
+Purpose: Task 51 manifest binding environment, dependency lock provenance, Task 49 data eligibility, family readiness, Task 50 training summary, and checkpoint references.
+
+Implementation: `src/covalent_design/training/v2_manifests.py`
+
+Public API:
+
+- `build_v2_checkpoint_experiment_manifest(...) -> ContractEnvelope[V2CheckpointExperimentManifest]`
+- `v2_checkpoint_experiment_manifest_to_dict(manifest) -> dict[str, object]`
+- `serialize_v2_checkpoint_experiment_manifest(manifest) -> str`
+- `hash_v2_checkpoint_experiment_manifest(manifest) -> str`
+- `validate_v2_checkpoint_experiment_manifest(manifest) -> ValidationReceipt`
+- `v2_hash_bytes`, `v2_hash_file`, and `v2_hash_object`
+
+Required fields:
+
+- `manifest_id`
 - `run_id`
-- `environment_manifest_hash`
-- `data_manifest_hashes`
+- `environment_hash`
+- `dependency_lock`
+- `data_hashes`
+- `dataset_index_hash`
 - `family_readiness_hash`
 - `training_config_hash`
+- `training_summary_hash`
+- `training_summary_ref`
 - `checkpoint_refs`
 - `baseline_mode`
-- `metrics`
+- `is_pmdm`
+- `pmdm_status`
+- `model_contract_version`
+
+`data_hashes` must include `records_jsonl`, `split_index`, `quality_report`, `visual_check_index`, and `license_gate_report`. Every hash uses `sha256:<64 lowercase hex>`.
+
+`dependency_lock` is a `V2DependencyLockProvenance` object with `status`, `lock_hash`, `uri`, `format`, and `reason`. `status="available"` requires a valid lock hash. `status="not_available"` records explicit provenance that no verified lock file exists and must not be treated as a verified lock hash. PMDM manifests require an available lock hash.
+
+`checkpoint_refs` are `V2CheckpointRef` entries with checkpoint id, metadata URI, step, optional metadata hash, format, and selected flag. They are references only; Task 51 does not create or embed checkpoint payloads.
+
+Baseline rules:
+
+- `baseline_mode="non_pmdm_baseline"` requires `is_pmdm=false`.
+- `baseline_mode="pmdm"` requires `is_pmdm=true`.
+- unavailable, blocked, or license-unknown PMDM status cannot be recorded as a successful PMDM checkpoint manifest.
+
+Validation returns structured `V2_MANIFEST_*` errors for missing environment, dependency lock provenance, data hashes, dataset index hash, family readiness hash, training config hash, training summary hash/ref, checkpoint refs, invalid hash format, PMDM/baseline mismatch, and unavailable PMDM success.
+
+Serialization is deterministic JSON with sorted keys and compact separators. The module is lightweight-safe and has no PMDM, PocketFlow, RDKit, or PyTorch hard import.
 
 ### V2SamplingEvaluationReport
 
@@ -510,6 +652,105 @@ Boundary rules:
 - Public status/spec payloads are JSON-serializable project-owned data.
 - Raw PMDM, PocketFlow, PyTorch, RDKit, or PyG objects must not cross this boundary.
 - Task 47 does not implement Task 48 baseline fallback, Task 49 training data, training loops, sampling, inference, evaluation, or real-data-root access.
+### Non-PMDM Baseline Boundary (Task 48)
+
+Purpose: explicit, labeled non-PMDM model forward path for when PMDM is unavailable or deliberately bypassed. This is an engineering smoke fallback, not the preferred scientific path and not PMDM.
+
+Implementation: `src/covalent_design/model/non_pmdm_baseline.py`
+
+Public API:
+
+- `check_baseline_available() -> NonPmdmBaselineStatus`
+- `baseline_status_to_dict(status) -> dict`
+- `check_baseline_mode(requested_mode: str) -> BaselineModeSelection`
+- `baseline_mode_selection_to_dict(selection) -> dict`
+- `forward_non_pmdm_baseline(*, batch, config, timestep=0.5, baseline_mode="not_selected") -> ContractEnvelope[Optional[ModelForwardOutput]]`
+- `baseline_envelope_to_dict(envelope) -> dict`
+- `validate_baseline_pmdm_outputs(pmdm_outputs, *, batch, config) -> None`
+
+Explicit selection rule: `forward_non_pmdm_baseline()` defaults to `baseline_mode="not_selected"` and returns `BASELINE_MODE_NOT_SELECTED`. It succeeds only when the caller explicitly passes `baseline_mode="non_pmdm_baseline"`. Passing `baseline_mode="pmdm"` returns `BASELINE_MODE_MISMATCH`; unknown modes return `BASELINE_MODE_UNSUPPORTED`.
+
+No-silent-fallback rule: PMDM-mode calls remain owned by Task 47 `forward_pmdm_real()`, which returns `PMDM_REAL_LICENSE_BLOCKED` while PMDM is license-blocked. Task 47 never switches to `non_pmdm_baseline`, and Task 48 never self-activates from PMDM unavailability. A future consumer must choose the baseline path explicitly.
+
+Status/report schema: `NonPmdmBaselineStatus` and successful baseline envelopes carry `baseline_mode: "non_pmdm_baseline"`, `is_pmdm: false`, `pmdm_import_attempted: false`, and machine-readable warning text `baseline is not PMDM; this is a smoke-only path`.
+
+Output contract: the baseline returns `ContractEnvelope[ModelForwardOutput]`. The payload contains the seven required PMDM-compatible output keys (`ligand_atom_features`, `protein_atom_features`, `ligand_coords_denoised`, `position_loss`, `atom_type_loss`, `timestep`, `num_atom`) and the same optional-key policy as the PMDM smoke adapter: `ligand_pair_features` and `protein_ligand_pair_features` appear only when their `ModelConfig` feature dimensions are positive. Values are deterministic project-owned Python data, not real PMDM computation.
+
+Serialization boundary: public status, selection, and envelope summaries are JSON-serializable project-owned data. Raw PMDM, PocketFlow, PyTorch tensor, RDKit, or PyG objects must not cross this boundary.
+
+Structured error/warning codes include `BASELINE_MODE_NOT_SELECTED`, `BASELINE_MODE_MISMATCH`, `BASELINE_MODE_UNSUPPORTED`, `BASELINE_BACKEND_UNAVAILABLE`, `BASELINE_CONFIG_INVALID`, and `BASELINE_NOT_PMDM_WARNING`.
+
+Scope exclusion: Task 48 does not implement Task 49 training dataset eligibility, training loop, losses, optimizer, checkpointing, sampling, inference, evaluation, or real-data-root access.
+
+### V2 Tiny Tuning Protocol (Task 52)
+
+Purpose: deterministic, budget-controlled hyperparameter protocol over the Task
+50 training boundary.
+
+Implementation:
+
+- `src/covalent_design/training/v2_tuning.py`
+- CLI: `python -m covalent_design.training.cli.v2_tune --config configs/v2_tiny_sweep.yml`
+
+Public API:
+
+- `run_v2_tune(config) -> ContractEnvelope[V2TuningSummary]`
+- `v2_trial_result_to_dict(result) -> dict`
+- `v2_tuning_summary_to_dict(summary) -> dict`
+
+Config contract: `V2TinySweepConfig` requires explicit `trial_count`,
+`runtime_budget_seconds`, `seeds`, `selection_metric`, `selection_mode`, device
+and model-mode selection, and the Task 49 gate input references consumed by Task
+50. The lightweight config uses comma-separated seeds because the project YAML
+loader intentionally supports a small scalar subset. `runtime_budget_seconds` is
+recorded and validated as the smoke protocol budget; Task 52 does not implement a
+wall-clock timeout. Seeds are part of deterministic trial identity and hashes; Task
+50 smoke summaries are deterministic and do not currently consume stochastic state.
+
+Trial contract: each `V2TrialResult` records a deterministic `trial_id`, ordinal
+index, seed, status, model mode, `config_hash`, `result_hash`, metric values,
+selected-checkpoint metadata, diagnostics, and structured error fields when a
+trial fails.
+
+Summary contract: `V2TuningSummary` records the config path, frozen selection
+metric/mode, explicit budget, deterministic trial ordering, all trial results,
+successful/failed counts, selected trial, `sweep_config_hash`,
+`sweep_result_hash`, and a machine-readable selected checkpoint reference. Failed
+trials remain in the report and cannot be promoted as the selected checkpoint.
+
+Boundary rules:
+
+- Task 52 calls the Task 50 training-loop API for each trial.
+- Task 52 does not read the real-data root.
+- Task 52 does not create binary checkpoint payloads.
+- Task 52 does not implement sampling, inference, evaluation, loss redesign, or
+  full training orchestration.
+### V2 Full Beta Training Harness (Task 52.5)
+
+Purpose: numbered full-beta training harness that binds Task 49 eligibility, Task 50 training summary, Task 51 manifest provenance, and Task 52 tuning evidence before Checkpoint V2-E.
+
+Implementation:
+
+- `src/covalent_design/training/v2_full_beta.py`
+- CLI: `python -m covalent_design.training.cli.v2_full_beta_train --config configs/v2_full_beta_train.yml`
+
+Public API:
+
+- `run_v2_full_beta_train(config) -> ContractEnvelope[V2FullBetaSummary]`
+- `v2_full_beta_summary_to_dict(summary) -> dict`
+
+Config contract: `V2FullBetaConfig` requires `execution_mode`, `runtime_budget_seconds`, `seed`, `device`, `model_mode`, split name, the same Task 49 gate input paths consumed by Task 50, `checkpoint_policy`, and `checkpoint_selection_metric`. The only v1 checkpoint policy is `manifest_ref_only`. The default config uses `execution_mode="fixture"` and does not read raw real-data roots.
+
+Summary contract: `V2FullBetaSummary` records success/error state, execution mode, device, model mode, checkpoint policy, selection metric, selected checkpoint reference, selection justification, nested Task 50 training summary, nested Task 52 tuning summary, Task 51 manifest validation result, output-write status, real-data-access status, config, diagnostics, warnings, and a deterministic `summary_hash`.
+
+Boundary rules:
+
+- Task 52.5 composes Tasks 49-52 and does not rebuild their internal validation logic.
+- Heavy/manual execution requires explicit controller authorization before real local data paths are used.
+- Missing heavy runtime requirements return structured failure and do not select a checkpoint.
+- Failed Task 50 training or failed Task 52 tuning never produces a selected checkpoint.
+- Successful fixture-mode runs may produce manifest-ref checkpoint metadata, but they do not create or track model payloads.
+- Task 52.5 does not implement later pipeline stages, result writing, model-payload publication, or evaluation.
 ## CLI Boundaries
 
 Future v2 CLIs should be thin wrappers around typed Python interfaces. Planned families:

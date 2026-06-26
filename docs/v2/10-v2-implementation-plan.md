@@ -270,7 +270,7 @@ python -m pytest tests/data/test_v2_conversion.py -q
 
 **Verified on 2026-06-16:** `pytest tests/data/test_v2_conversion.py -q` - tests pass.
 
-**Notes:** Keep source parsing separate from training. Task 42 must not perform network download and must not treat local files as trusted without Task 41 staging evidence. `pending_download` is not convertible -download the source first, then re-stage with manual intake mode. Task 42 produces `SourceIngestRecord` objects that feed directly into v1 `normalize_linkages()` and `normalize_with_identity_resolution()`.
+**Notes:** Keep source parsing separate from training. Task 42 must not perform network download and must not treat local files as trusted without Task 41 staging evidence. `pending_download` is not convertible - download the source first, then re-stage with manual intake mode. Task 42 produces `SourceIngestRecord` objects that feed directly into v1 `normalize_linkages()` and `normalize_with_identity_resolution()`.
 
 ### Task 43: Design License And Provenance Audit Gate
 
@@ -340,7 +340,7 @@ rg -n "no download|no conversion|no training|no sampling|Task 44" docs/v2/10-v2-
 python -m covalent_design.data.cli.v2_run_real_etl --raw-root D:\codex_work\data --staging-root data/v2/staging --out-root data/v2/processed --report-root data/v2/reports --source all
 ```
 
-The repaired command validates UTF-8/UTF-8-BOM source manifests, stages checksum-verified manual sources, converts all three real sources in memory, runs the license/provenance gate, and writes `data/v2/processed/v2_real_etl_manifest.json` plus per-source local JSONL artifacts. Current machine evidence is `data/v2/reports/window_c_real_etl_report.json`; review narrative is `docs/reviews/v2-real-data-import-repair-2026-06-19.md`. Verdict: **data-intake prerequisite complete for future Task 49** for CovalentInDB, CovPDB, and CovBinderInPDB, subject to Task 49 consuming only the processed manifest/JSONL artifacts and preserving the `manual_exempt` audit status when the project sequence later reaches Task 49. Task 49 follows Checkpoint V2-C in the current project sequence; do not enter Task 49 before Task 45 and Checkpoint V2-C.
+The repaired command validates UTF-8/UTF-8-BOM source manifests, stages checksum-verified manual sources, converts all three real sources in memory, runs the license/provenance gate, and writes `data/v2/processed/v2_real_etl_manifest.json` plus per-source local JSONL artifacts. Current machine evidence is `data/v2/reports/window_c_real_etl_report.json`; review narrative is `docs/reviews/v2-real-data-import-repair-2026-06-19.md`. Verdict: **data-intake prerequisite complete for Task 49** for CovalentInDB, CovPDB, and CovBinderInPDB. Task 49 now consumes explicit records/split/visual/quality/family/license artifact paths and preserves the `manual_exempt` audit status as a distinct eligibility category. Historical sequencing still applies: Task 49 was not entered until after Task 45 and Checkpoint V2-D.
 
 ## Phase V2-C: Chemistry / RDKit Heavy Adapters
 
@@ -446,7 +446,7 @@ python -m pytest tests/chem/test_rdkit_descriptors.py tests/chem/test_scaffolds.
 - Descriptor computation: uses `rdkit.Chem.Descriptors.CalcMolDescriptors` as primary path, with a manual fallback via individual `rdkit.Chem.Descriptors` and `rdkit.Chem.Crippen` functions when the bulk API is unavailable.
 - Drug-likeness: Lipinski Rule of 5 violations are counted (MW>500, LogP>5, HBD>5, HBA>10); QED is computed from `rdkit.Chem.QED.qed()`. Neither gates `status: "ok"`.
 
-**Notes:** Task 45 is a heavy-profile RDKit diagnostics task, not a training gate. Drug-likeness diagnostic is not a hard beta gate. Do not implement docking here. Task 45 does not promote RDKit to canonical mmCIF writer or sole chemistry authority. Current project sequence is Task 45 -> Checkpoint V2-C, not Task 49.
+**Notes:** Task 45 is a heavy-profile RDKit diagnostics task, not a training gate. Drug-likeness diagnostic is not a hard beta gate. Do not implement docking here. Task 45 does not promote RDKit to canonical mmCIF writer or sole chemistry authority. Historical sequence at Task 45 completion was Task 45 -> Checkpoint V2-C, before Task 49.
 
 ### Checkpoint V2-C: Chemistry Gate
 
@@ -462,7 +462,7 @@ python -m pytest tests/chem/test_rdkit_descriptors.py tests/chem/test_scaffolds.
 - default CI remains RDKit-free,
 - no docking, PyTorch, or real data root access exists in chemistry adapters.
 
-**Task 45 evidence on 2026-06-19:** Task 45 implemented and verified (see Task 45 block above for test numbers). Scaffold derivation source-verified against official Bemis-Murcko API. Descriptors computed with CalcMolDescriptors primary path and manual fallback. Drug-likeness (Lipinski Ro5 + QED) is diagnostic-only; neither gates `status: "ok"`. Current project sequence is Task 45 -> Checkpoint V2-C, not Task 49. V2-B real-data evidence remains valid.
+**Task 45 evidence on 2026-06-19:** Task 45 implemented and verified (see Task 45 block above for test numbers). Scaffold derivation source-verified against official Bemis-Murcko API. Descriptors computed with CalcMolDescriptors primary path and manual fallback. Drug-likeness (Lipinski Ro5 + QED) is diagnostic-only; neither gates `status: "ok"`. Historical sequence at Task 45 completion was Task 45 -> Checkpoint V2-C, before Task 49. V2-B real-data evidence remains valid.
 
 ## Phase V2-D: Tensor / PMDM / Baseline Training Foundation
 
@@ -538,7 +538,9 @@ python -m pytest tests/model/test_pmdm_adapter.py tests/model/test_torch_backend
 
 ### Task 48: Design Explicit Non-PMDM Baseline Fallback
 
-**Goal:** Provide a labeled fallback only when PMDM is unavailable or deliberately bypassed.
+**Status:** Implemented as an explicit non-PMDM smoke fallback. Historical next step after Task 48 was Checkpoint V2-D before Task 49.
+
+**Goal:** Provide a labeled fallback only when PMDM is unavailable or deliberately bypassed, without silently switching from PMDM mode.
 
 **Files/modules:**
 
@@ -546,24 +548,29 @@ python -m pytest tests/model/test_pmdm_adapter.py tests/model/test_torch_backend
 - `tests/model/test_non_pmdm_baseline.py`
 - `docs/v2/09-v2-interface-and-contract-changes.md`
 
-**Dependencies:** Task 46.
+**Dependencies:** Task 46 and Task 47.
 
 **Acceptance:**
 
-- Baseline manifests include `baseline_mode: non_pmdm_baseline`.
-- PMDM mode and baseline mode cannot be confused.
-- Baseline forward path satisfies output contracts.
-- Reports warn that baseline is not PMDM.
+- Baseline status and reports include `baseline_mode: non_pmdm_baseline`.
+- Baseline status and reports include `is_pmdm: false` and warning text `baseline is not PMDM; this is a smoke-only path`.
+- Baseline succeeds only when explicitly selected with `baseline_mode="non_pmdm_baseline"`.
+- Omitted mode returns `BASELINE_MODE_NOT_SELECTED`; `baseline_mode="pmdm"` returns `BASELINE_MODE_MISMATCH`; unknown modes return `BASELINE_MODE_UNSUPPORTED`.
+- Task 47 PMDM blocked/unavailable behavior does not automatically call the baseline path.
+- Baseline forward returns `ContractEnvelope[Optional[ModelForwardOutput]]`; successful payloads satisfy the existing PMDM-compatible output vocabulary.
+- Output contains the seven required PMDM-compatible keys and optional keys follow `ModelConfig` feature dimensions.
+- Public payloads are deterministic and JSON-serializable project-owned data; no raw PMDM, PocketFlow, PyTorch tensor, RDKit, or PyG object crosses the boundary.
+- Task 48 does not implement Task 49, training dataset, training loop, losses, optimizer, checkpointing, sampling, inference, evaluation, or real-data access.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/model/test_non_pmdm_baseline.py -q
+python -m pytest tests/model/test_pmdm_real_adapter.py tests/model/test_non_pmdm_baseline.py -q
 ```
 
-**Notes:** This is a fallback, not the preferred scientific path.
-
+**Notes:** This is a fallback, not the preferred scientific path. It is intentionally distinct from PMDM and must remain labeled as `non_pmdm_baseline`.
 ### Checkpoint V2-D: Tensor / PMDM / Baseline Foundation Gate
 
 **Goal:** Confirm tensor conversion, PMDM mode, and baseline mode are all explicit before training-loop work starts.
@@ -575,38 +582,67 @@ python -m pytest tests/model/test_non_pmdm_baseline.py -q
 - baseline fallback is labeled `non_pmdm_baseline`,
 - PMDM and baseline modes cannot be silently confused.
 
-Current status: Task 46 verified; Task 47 implemented as `license_unknown` structured-unavailable smoke boundary; Task 48 remains planned explicit baseline fallback.
+Checkpoint V2-D status: PASS WITH RISKS (2026-06-21). Evidence: `docs/reviews/checkpoint-v2-d-foundation-gate-review-2026-06-21.md`. Task 46 is verified as a tensor adapter boundary; Task 47 is implemented as a `license_unknown` structured-unavailable PMDM smoke boundary; Task 48 is implemented as explicit `non_pmdm_baseline` fallback with no silent PMDM fallback. Residual P1 risks are PMDM license/lock unavailability and future consumer-side cross-mode guards. Task 49 may proceed only after user confirmation; this checkpoint itself did not implement Task 49. Task 49 is now implemented in the subsequent section below.
 
 ## Phase V2-E: Training Loop And Tuning
 
 ### Task 49: Design Training Dataset V2
 
-**Goal:** Extend training selection to use family readiness and license gates.
+**Goal:** Build the V2 split-specific training eligibility index from finalized records and precomputed gate reports.
 
 **Files/modules:**
 
 - `src/covalent_design/training/v2_dataset.py`
 - `tests/training/test_v2_dataset.py`
+- `tests/fixtures/training/v2_dataset/`
 - `docs/v2/06-v2-training-and-tuning-spec.md`
 
-**Dependencies:** Checkpoint V2-B, Task 43.
+**Dependencies:** Checkpoint V2-D, Task 43, family readiness evidence from the V2 data pipeline.
+
+**Final API:**
+
+```python
+prepare_v2_dataset(
+    records_path,
+    split_index_path,
+    split_name,
+    *,
+    visual_check_index_path,
+    quality_report_path,
+    family_readiness_report_path,
+    license_gate_report_path,
+    policy=None,
+) -> ContractEnvelope[V2TrainingDatasetIndex]
+```
 
 **Acceptance:**
 
-- Training eligibility requires split policy, visual/quality policy, license audit, and family readiness.
-- Q2 behavior remains explicit.
-- Blocked families do not enter training.
-- Exclusion summary accounts for every excluded record.
+- One call builds exactly one split-specific `V2TrainingDatasetIndex` for `train`, `val`, or `test`.
+- Inputs are explicit local artifact paths: finalized records, split index, visual check index, quality report, family readiness report, and license gate report.
+- Task 49 does not read `D:\codex_work\data`, does not consume raw real-data roots, and does not write training artifacts.
+- Training eligibility requires split policy, license audit, family readiness, visual status, quality policy, linkage policy, and optional Q2 policy.
+- `manual_exempt` remains distinct from `allowed`; it is eligible only when both record metadata and license report say manual intake and the license report has `training_eligible=true`; `training_eligible=false` is excluded as `excluded_manual_exempt_audit_failed`.
+- `blocked`, `unknown`, unsatisfied `restricted`, missing license audit, failed license audit, and failed manual-exempt audit records are excluded.
+- Blocked/deferred/partial/missing family readiness records are excluded.
+- Visual-blocked records are excluded by default; visual `pass` is non-blocking.
+- Q2 records are included by default and excluded only when `policy.exclude_q2=True`.
+- Exclusion summary accounts for every excluded record and enforces `eligible_count + excluded_count == input_count`.
+- Output is deterministic and JSON-serializable.
+- Excluded records preserve source/intake provenance and source license `reason_codes` as `license_reason_codes`.
+- Task 49 validates minimum artifact role presence only; records with no usable artifact roles are excluded as `excluded_missing_artifact_roles`.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/training/test_v2_dataset.py -q
+python -m pytest tests/training/test_dataset.py tests/training/test_masks_denominators.py tests/training/test_train_smoke.py tests/training/test_v2_dataset.py -q
+python -m compileall -q scripts src
 ```
 
-**Notes:** Do not compute losses here.
+**Status:** Implemented and remediated after the 2026-06-21 code review. Targeted evidence: `tests/training/test_v2_dataset.py` covers 27 cases for split-specific eligibility, license/family/visual/quality/Q2/linkage gates, manual_exempt cross-checks including `training_eligible=false`, missing split assignment, family deferred/partial, minimum artifact role presence, count conservation, deterministic output, structured missing-file errors, excluded-record provenance, and clean subprocess module-boundary checks.
 
+**Notes:** Do not compute masks, losses, model forward passes, checkpoints, or training loops here. Task 50 consumes this dataset index later. `linkage_count` zero/missing/non-integer behavior is P2 deferred and must not be changed implicitly.
 ### Task 50: Design Training Loop V2
 
 **Goal:** Run CPU smoke and single-GPU smoke through the selected model path.
@@ -624,6 +660,8 @@ python -m pytest tests/training/test_v2_dataset.py -q
 **Acceptance:**
 
 - CPU smoke completes without GPU.
+- The V2 training loop consumes Task 49 `V2TrainingDatasetIndex` or an equivalent validated envelope and must not bypass Task 49 by calling the v1 `prepare_dataset()` source directly.
+- Artifact path existence, readability, byte size, and checksum validation fail before tensor construction.
 - GPU smoke requires CUDA and fails clearly if unavailable.
 - PMDM vs baseline mode is explicit.
 - Loss report and denominators are preserved.
@@ -637,7 +675,7 @@ python -m pytest tests/training/test_v2_train_loop.py -q
 python -m covalent_design.training.cli.v2_train --config configs/v2_train_cpu_smoke.yml
 ```
 
-**Notes:** Full beta run remains later.
+**Notes:** Full beta run, checkpoint/run manifest binding, and hyperparameter tuning remain later tasks. Task 50 is intentionally stdout-summary oriented and does not publish training performance.
 
 ### Task 51: Design Checkpoint And Experiment Manifest V2
 
@@ -653,11 +691,13 @@ python -m covalent_design.training.cli.v2_train --config configs/v2_train_cpu_sm
 
 **Acceptance:**
 
-- Manifest records environment hash, dependency lock hash, data hashes, family readiness hash, config hash, checkpoint refs, and baseline mode.
-- Missing required provenance fails.
+- `src/covalent_design/training/v2_manifests.py` implements `V2CheckpointExperimentManifest`, `V2DependencyLockProvenance`, and `V2CheckpointRef` as project-owned serializable data.
+- Manifest records environment hash, explicit dependency-lock provenance, data hashes, Task 49 dataset/index hash, family readiness hash, training config hash, training summary hash/ref, checkpoint refs, and baseline mode.
+- If no verified dependency lock exists, the manifest records `dependency_lock.status="not_available"`, `lock_hash=null`, and a reason instead of forging a verified lock hash.
+- Missing required provenance fails with structured `V2_MANIFEST_*` errors.
+- `baseline_mode="non_pmdm_baseline"` preserves `is_pmdm=false`; PMDM unavailable cannot be recorded as a successful PMDM manifest.
 - Output is deterministic.
-- No model weight files are committed as fixtures.
-
+- No checkpoint payload files are committed as fixtures.
 **Verification:**
 
 ```powershell
@@ -665,7 +705,7 @@ $env:PYTHONPATH='src'
 python -m pytest tests/training/test_v2_manifests.py -q
 ```
 
-**Notes:** Defines manifest schemas only; it must not start training or commit model weights. Heavy dependency provenance is metadata and does not make default CI install heavy packages.
+**Notes:** Defines manifest schemas only; it must not start training, run later search logic, read the real-data root, or commit checkpoint payloads. Heavy dependency provenance is metadata and does not make default CI install heavy packages.
 
 ### Task 52: Design Hyperparameter Tuning Protocol
 
@@ -697,9 +737,52 @@ python -m covalent_design.training.cli.v2_tune --config configs/v2_tiny_sweep.ym
 
 **Notes:** Tuning is budget-controlled and manifest-driven. It must not silently promote failed trials or create untracked heavyweight outputs.
 
+Task 52 implementation note: the lightweight implementation uses
+`V2TinySweepConfig`, `V2TrialResult`, and `V2TuningSummary`. It records
+manifest-style checkpoint references for successful trials and leaves payload
+creation to later checkpoint-producing tasks. In the lightweight Task 52 scope,
+`runtime_budget_seconds` is recorded and validated but not enforced as a
+wall-clock timeout, and seeds identify deterministic trials while the Task 50 smoke
+loop remains non-random.
+
+### Task 52.5: Run Heavy Full Beta Training
+
+**Goal:** Provide the numbered full-beta training harness between tiny tuning and Checkpoint V2-E, binding Task 49 eligibility, Task 50 training, Task 51 manifest provenance, and Task 52 selection into a single auditable command.
+
+**Files/modules:**
+
+- `src/covalent_design/training/v2_full_beta.py`
+- `src/covalent_design/training/cli/v2_full_beta_train.py`
+- `tests/training/test_v2_full_beta_train.py`
+- `tests/fixtures/training/v2_full_beta/`
+- `configs/v2_full_beta_train.yml`
+
+**Dependencies:** Tasks 49-52.
+
+**Acceptance:**
+
+- `run_v2_full_beta_train(config)` returns `ContractEnvelope[V2FullBetaSummary]`.
+- The fixture mode command succeeds deterministically without reading the raw real-data root and without writing model payloads.
+- The heavy-manual mode requires explicit controller authorization before using real local data paths.
+- Missing CUDA/heavy runtime requirements return structured failure, not traceback.
+- Failed training or failed tuning does not select a checkpoint.
+- Successful fixture-mode runs produce a selected manifest-ref checkpoint with metric justification and Task 51 manifest validation.
+- The CLI prints deterministic JSON.
+- No Task 53 or later behavior is implemented here.
+
+**Verification:**
+
+```powershell
+$env:PYTHONPATH='src'
+python -m pytest tests/training/test_v2_full_beta_train.py -q
+python -m covalent_design.training.cli.v2_full_beta_train --config configs/v2_full_beta_train.yml
+```
+
+**Notes:** Task 52.5 is the first numbered full-beta training harness. It is allowed to produce fixture-mode success and structured heavy-manual unavailable/unauthorized results when the required CUDA, PMDM, dependency lock, or real-data authorization evidence is absent. Heavy checkpoint payload creation remains local/manual evidence and must not be committed by default.
+
 ### Checkpoint V2-E: Training Loop And Tuning Gate
 
-**Goal:** Confirm dataset eligibility, training smoke, manifest capture, and tuning selection have auditable provenance.
+**Goal:** Confirm dataset eligibility, training smoke, manifest capture, tuning selection, and Task 52.5 full-beta harness evidence have auditable provenance.
 
 **Required evidence:**
 
@@ -707,13 +790,16 @@ python -m covalent_design.training.cli.v2_tune --config configs/v2_tiny_sweep.ym
 - CPU smoke training completes or fails with a structured reason,
 - GPU/full heavy training remains manual unless the heavy profile is explicitly selected,
 - experiment manifests bind environment, dependency, data, family readiness, config, and checkpoint hashes,
-- tiny sweep output records trial results and a selected checkpoint without hiding failed trials.
+- tiny sweep output records trial results and a selected checkpoint without hiding failed trials,
+- Task 52.5 fixture-mode full-beta command succeeds deterministically or heavy-manual mode fails with a structured reason before unauthorized real-data access.
 
 ## Phase V2-F: Sampling And Evaluation
 
 ### Task 53: Design Sampling Request And Result V2
 
-**Goal:** Extend sampling inputs/outputs for beta checkpoint evaluation.
+**Status:** Implemented as a package-interface contract. It does not execute sampling.
+
+**Goal:** Define deterministic V2 sampling request/result contracts for beta checkpoint sampling and later evaluation.
 
 **Files/modules:**
 
@@ -725,10 +811,17 @@ python -m covalent_design.training.cli.v2_tune --config configs/v2_tiny_sweep.ym
 
 **Acceptance:**
 
-- Request includes checkpoint, split/family selector, seed, sample count, and output root.
-- Result links to checkpoint and environment manifests.
-- Invalid and system failures remain separated.
-- Output is deterministic for deterministic smoke mode.
+- `V2SamplingRequest` includes checkpoint ref, checkpoint manifest ref, environment manifest ref, split-or-record selector, family filter, seed, sample count, output root, retry policy, baseline mode, and explicit `generation_mode = "reactive_site"`.
+- Exactly one selector is accepted: `split_name` (`train`, `val`, `test`) or explicit `record_ids`.
+- Reference-ligand generation is rejected; Task 53 remains reactive-site generation only.
+- `build_v2_sampling_request()` returns `ContractEnvelope[Optional[V2SamplingRequest]]` with structured `V2_SAMPLING_*` errors for missing/invalid request fields.
+- `V2SamplingResult` links checkpoint, checkpoint manifest, and environment manifest refs.
+- Invalid generated samples and sampling system failures remain separate through `V2InvalidDecodeDiagnostic` and `V2SamplingSystemFailure`.
+- Failure concepts remain separated: request validation failure, sampling system failure, invalid generated sample, export failure, docking-not-run, and evaluation artifact corruption.
+- Result count conservation is enforced: valid + invalid = attempted, and attempted + system failures = requested.
+- Request/result serialization and hashes are deterministic.
+- Task 53 performs no true sampling, model forward pass, result export, mmCIF writing, docking, evaluation, real-data-root access, or artifact generation.
+- No hard import of RDKit, PyTorch, CUDA, PMDM, PocketFlow, or docking tools is introduced.
 
 **Verification:**
 
@@ -737,14 +830,19 @@ $env:PYTHONPATH='src'
 python -m pytest tests/inference/test_v2_sampling.py -q
 ```
 
-**Notes:** Sampling remains a package-interface contract here; final export, mmCIF writing, and evaluation stay in their own task boundaries unless a later task explicitly changes that.
+**Verified on 2026-06-24:** `python -m pytest tests/inference/test_v2_sampling.py -q` - 26 passed.
+
+**Notes:** Sampling remains a package-interface contract here. Deterministic sampling smoke is Task 54; evaluation metrics are Task 55; docking feasibility is Task 56. Final export and mmCIF writing stay outside Task 53.
 
 ### Task 54: Design Deterministic Sampling Smoke Tests
 
-**Goal:** Prove sampling can run on a small held-out/per-family fixture.
+**Status:** Implemented as deterministic fixture-mode sampling smoke. It is not real heavy sampling and does not evaluate generation quality.
+
+**Goal:** Prove the Task 53 sampling contract can execute a small held-out/per-family fixture path deterministically.
 
 **Files/modules:**
 
+- `src/covalent_design/inference/v2_sampling.py`
 - `tests/inference/test_v2_sampling_smoke.py`
 - `tests/fixtures/v2/sampling/`
 - `configs/v2_sampling_smoke.yml`
@@ -753,19 +851,30 @@ python -m pytest tests/inference/test_v2_sampling.py -q
 
 **Acceptance:**
 
-- Same seed produces identical outputs.
-- Held-out selector works.
+- `run_deterministic_fixture_sampling()` consumes a `V2SamplingRequest`, already-loaded fixture records, and an optional fixture split index.
+- Same seed produces identical serialized result output and hash.
+- Different seed changes deterministic fixture output.
+- Held-out split selectors work without reading real data roots.
 - Per-family selector works.
-- Failure accounting is preserved.
+- Explicit `record_ids` selection bypasses split selection.
+- Failure accounting is preserved and separates invalid decode diagnostics from sampling system failures.
+- Empty fixture selection is reported as sampling system failures, not silent success.
+- Smoke config and fixtures are relative project files.
+- `output_root` is not created and no generated complex, mmCIF, docking, evaluation, model, training, or inference artifacts are written.
+- No hard import of RDKit, PyTorch, CUDA, PMDM, PocketFlow, docking, or evaluation tooling is introduced.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/inference/test_v2_sampling_smoke.py -q
+python -m pytest tests/inference/test_v2_sampling.py -q
+python -m compileall -q scripts src
 ```
 
-**Notes:** Deterministic smoke proves repeatability only. It is not a scientific quality claim.
+**Verified on 2026-06-24:** `python -m pytest tests/inference/test_v2_sampling_smoke.py -q` - 18 passed; `python -m pytest tests/inference/test_v2_sampling.py -q` - 26 passed; `python -m compileall -q scripts src` - passed.
+
+**Notes:** Deterministic smoke proves fixture-path repeatability and accounting only. It is not a scientific quality claim, not real stochastic sampling, and not Task 55 metrics or Task 56 docking feasibility.
 
 ### Task 55: Design Evaluation Metrics V2
 
@@ -777,23 +886,30 @@ python -m pytest tests/inference/test_v2_sampling_smoke.py -q
 - `src/covalent_design/evaluation/cli/v2_evaluate.py`
 - `tests/evaluation/test_v2_metrics.py`
 
-**Dependencies:** Tasks 53, 54.
+**Dependencies:** Task 53, Task 54.
 
 **Acceptance:**
 
+- `build_v2_evaluation_report()` consumes a `V2SamplingResult` plus optional explicit fixture/evidence metadata.
+- `python -m covalent_design.evaluation.cli.v2_evaluate` emits deterministic JSON.
 - Report includes validity, family metrics, covalent geometry, uniqueness/novelty when evaluable, RDKit validity when available, and failure accounting.
-- `not_evaluable` is explicit when a tool is absent.
-- Denominator conservation is checked.
-- Output is deterministic.
+- `not_evaluable` is explicit when evidence or an optional tool is absent.
+- Denominator conservation is checked and mismatches return structured `V2_EVALUATION_DENOMINATOR_MISMATCH`.
+- Docking remains Task 56 and is reported as `docking_evaluation_status: not_evaluable` here.
+- No hard import of RDKit, PyTorch, CUDA, PMDM, PocketFlow, or docking tools is introduced.
+- No real-data-root access, real heavy sampling, docking output, or evaluation artifact writing is introduced.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/evaluation/test_v2_metrics.py -q
+python -m covalent_design.evaluation.cli.v2_evaluate --help
 ```
 
-**Notes:** Metrics must distinguish unavailable evidence from negative results so optional heavy-tool gaps are not misreported as model failures.
+**Verified on 2026-06-26:** `python -m pytest tests/evaluation/test_v2_metrics.py -q` - 10 passed.
+
+**Notes:** Metrics distinguish unavailable evidence from negative results so optional heavy-tool gaps are not misreported as model failures. Task 55 is fixture/evidence-contract evaluation, not a scientific quality claim and not Task 56 docking feasibility.
 
 ### Task 56: Design Docking Feasibility Gate
 
