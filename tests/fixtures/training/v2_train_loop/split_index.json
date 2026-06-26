@@ -1,0 +1,10 @@
+{
+  "assignments": [
+    {
+      "record_id": "REC-V2-SMOKE",
+      "split": "train",
+      "fallback_reason": null,
+      "manual_review_status": "pass"
+    }
+  ]
+}

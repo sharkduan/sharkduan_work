@@ -1,0 +1,37 @@
+"""CLI for the Task 50 V2 training smoke loop."""
+
+from __future__ import annotations
+
+import argparse
+import json
+
+from covalent_design.contracts.errors import exit_code_for_error
+from covalent_design.training.v2_train_loop import run_v2_train, v2_training_summary_to_dict
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run the V2 training smoke loop.")
+    parser.add_argument("--config", required=True, help="Path to a V2 training smoke YAML config.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    envelope = run_v2_train(args.config)
+    print(
+        json.dumps(
+            v2_training_summary_to_dict(envelope.payload),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    if envelope.receipt.passed:
+        return 0
+    if envelope.receipt.errors:
+        return exit_code_for_error(envelope.receipt.errors[0])
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

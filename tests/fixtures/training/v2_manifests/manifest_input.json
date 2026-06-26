@@ -1,0 +1,28 @@
+{
+  "config": {
+    "batch_size": 1,
+    "device": "cpu",
+    "model_mode": "non_pmdm_baseline",
+    "profile": "cpu_smoke",
+    "steps": 1
+  },
+  "dataset_index": {
+    "eligible_count": 1,
+    "record_ids": [
+      "REC-V2-MANIFEST"
+    ],
+    "split_name": "train"
+  },
+  "environment": {
+    "profile": "lightweight",
+    "status": "pass"
+  },
+  "family_readiness": {
+    "CYS_MICHAEL_ADDITION": "ready"
+  },
+  "summary": {
+    "baseline_mode": "non_pmdm_baseline",
+    "is_pmdm": false,
+    "success": true
+  }
+}

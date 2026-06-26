@@ -1,0 +1,14 @@
+{
+  "blocked_count": 4,
+  "training_eligible_count": 4,
+  "status_counts": {"allowed":1,"restricted":2,"blocked":1,"unknown":1,"manual_exempt":2},
+  "sources": [
+    {"source_name":"FixtureSource","intake_mode":"manual","license_audit_ref":"audit/allowed","license_status":"allowed","training_eligible":true,"reason_codes":[],"restriction_conditions":[],"notice":""},
+    {"source_name":"FixtureBlocked","intake_mode":"manual","license_audit_ref":"audit/blocked","license_status":"blocked","training_eligible":false,"reason_codes":["V2_LICENSE_STATUS_BLOCKED"],"restriction_conditions":[],"notice":""},
+    {"source_name":"FixtureUnknown","intake_mode":"manual","license_audit_ref":"audit/unknown","license_status":"unknown","training_eligible":false,"reason_codes":["V2_LICENSE_STATUS_UNKNOWN_BLOCKED"],"restriction_conditions":[],"notice":""},
+    {"source_name":"FixtureRestrictedBad","intake_mode":"manual","license_audit_ref":"audit/restricted_bad","license_status":"restricted","training_eligible":false,"reason_codes":["V2_LICENSE_RESTRICTED_CONDITIONS_UNSATISFIED"],"restriction_conditions":["non-commercial only"],"notice":""},
+    {"source_name":"FixtureRestrictedOk","intake_mode":"manual","license_audit_ref":"audit/restricted_ok","license_status":"restricted","training_eligible":true,"reason_codes":[],"restriction_conditions":["non-commercial only"],"notice":"restriction satisfied"},
+    {"source_name":"FixtureManualOk","intake_mode":"manual","license_audit_ref":"audit/manual_ok","license_status":"manual_exempt","training_eligible":true,"reason_codes":[],"restriction_conditions":[],"notice":"manual exempt accepted"},
+    {"source_name":"FixtureManualDownload","intake_mode":"download","license_audit_ref":"audit/manual_download","license_status":"manual_exempt","training_eligible":false,"reason_codes":["V2_LICENSE_MANUAL_EXEMPT_DOWNLOAD"],"restriction_conditions":[],"notice":"manual_exempt invalid for download"}
+  ]
+}

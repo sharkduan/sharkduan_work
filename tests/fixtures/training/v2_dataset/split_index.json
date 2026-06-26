@@ -1,0 +1,21 @@
+{
+  "assignments": [
+    {"record_id":"REC-ELIG","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-BLOCK-FAMILY","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-LIC-BLOCK","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-LIC-UNKNOWN","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-REST-BAD","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-REST-OK","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-MANUAL-OK","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-MANUAL-DOWNLOAD","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-VIS-FAIL","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-VIS-PENDING","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-VIS-REVIEW","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-OTHER-SPLIT","split":"val","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-SPLIT-EXCLUDED","split":"excluded","fallback_reason":"scaffold_fallback_pending","manual_review_status":"pending"},
+    {"record_id":"REC-Q3","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-Q2","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-MULTI","split":"train","fallback_reason":null,"manual_review_status":null},
+    {"record_id":"REC-MULTI-REASONS","split":"train","fallback_reason":null,"manual_review_status":null}
+  ]
+}

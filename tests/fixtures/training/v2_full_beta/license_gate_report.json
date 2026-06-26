@@ -1,0 +1,13 @@
+{
+  "sources": [
+    {
+      "license_audit_ref": "license/REC-V2-SMOKE",
+      "license_status": "allowed",
+      "training_eligible": true,
+      "intake_mode": "manual",
+      "reason_codes": [
+        "fixture_allowed"
+      ]
+    }
+  ]
+}
