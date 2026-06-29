@@ -925,19 +925,35 @@ python -m covalent_design.evaluation.cli.v2_evaluate --help
 
 **Acceptance:**
 
-- Engine choice, license, install path, CLI/API probe, input/output format, and runtime are reported.
+- Report includes engine candidate/status.
+- Report includes engine license status.
+- Report includes install path or missing-install reason.
+- Report includes CLI/API probe status.
+- Report includes input and output format support.
+- Report includes probe duration when evidence exists.
 - Missing engine reports `not_evaluable`.
-- Docking failure does not fail v2-beta release.
-- No real docking output is required.
+- Unknown license reports `license_unknown` and remains non-blocking.
+- Unsupported formats report `not_evaluable`.
+- Probe failure reports `failed_probe` and remains non-blocking.
+- Invalid feasible claims fail with structured `V2_DOCKING_FEASIBILITY_CLAIM_INVALID`.
+- Docking failure or unavailable engine does not fail v2-beta release.
+- No real docking output is required or written.
+- No external docking engine is invoked by the lightweight implementation.
+- No hard dependency on a docking engine, RDKit, PyTorch, CUDA, PMDM, or PocketFlow is introduced.
+- No network install/download and no real-data-root access is performed.
 
 **Verification:**
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m pytest tests/evaluation/test_v2_docking_feasibility.py -q
+python -m pytest tests/evaluation/test_v2_metrics.py -q
+python -m compileall -q scripts src
 ```
 
-**Notes:** Docking remains feasibility-only and non-blocking for v2-beta unless a later accepted decision promotes it.
+**Verified on 2026-06-26:** `python -m pytest tests/evaluation/test_v2_docking_feasibility.py -q` - 10 passed.
+
+**Notes:** Docking remains feasibility-only and non-blocking for v2-beta unless a later accepted decision promotes it. Task 56 records explicit evidence and validation only; it is not docking execution and is not a scientific quality claim.
 
 ### Checkpoint V2-F: Sampling And Evaluation Gate
 

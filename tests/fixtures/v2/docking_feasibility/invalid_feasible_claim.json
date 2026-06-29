@@ -1,0 +1,15 @@
+{
+  "api_probe_status": "not_attempted",
+  "cli_probe_status": "not_attempted",
+  "engine_candidate": "fixture_engine",
+  "feasibility_status": "feasible",
+  "input_format_support": {
+    "status": "not_checked",
+    "supported_formats": []
+  },
+  "license_status": "unknown",
+  "output_format_support": {
+    "status": "not_checked",
+    "supported_formats": []
+  }
+}

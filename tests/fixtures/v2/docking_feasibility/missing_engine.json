@@ -1,0 +1,17 @@
+{
+  "api_probe_status": "not_attempted",
+  "cli_probe_status": "not_attempted",
+  "engine_candidate": "fixture_engine",
+  "feasibility_status": "not_evaluable",
+  "input_format_support": {
+    "status": "not_checked",
+    "supported_formats": []
+  },
+  "license_status": "not_applicable",
+  "missing_install_reason": "engine_not_installed",
+  "not_evaluable_reason": "engine_not_installed",
+  "output_format_support": {
+    "status": "not_checked",
+    "supported_formats": []
+  }
+}

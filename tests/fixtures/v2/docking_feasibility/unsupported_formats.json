@@ -1,0 +1,18 @@
+{
+  "api_probe_status": "not_attempted",
+  "cli_probe_status": "not_attempted",
+  "engine_candidate": "fixture_engine",
+  "engine_version": "fixture-1.0",
+  "feasibility_status": "not_evaluable",
+  "input_format_support": {
+    "status": "unsupported",
+    "supported_formats": []
+  },
+  "install_path": "fixtures/bin/fixture_engine",
+  "license_status": "allowed",
+  "not_evaluable_reason": "unsupported_format",
+  "output_format_support": {
+    "status": "unsupported",
+    "supported_formats": []
+  }
+}

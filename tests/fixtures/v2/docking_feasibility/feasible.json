@@ -1,0 +1,18 @@
+{
+  "api_probe_status": "not_attempted",
+  "cli_probe_status": "passed",
+  "engine_candidate": "fixture_engine",
+  "engine_version": "fixture-1.0",
+  "feasibility_status": "feasible",
+  "input_format_support": {
+    "status": "supported",
+    "supported_formats": ["fixture_receptor"]
+  },
+  "install_path": "fixtures/bin/fixture_engine",
+  "license_status": "allowed",
+  "output_format_support": {
+    "status": "supported",
+    "supported_formats": ["fixture_pose"]
+  },
+  "probe_duration_seconds": 0.012
+}

@@ -1,13 +1,13 @@
 # V2 Sampling And Evaluation Spec
 
 Date: 2026-06-16
-Status: Task 53 contract implemented; Task 54 deterministic fixture smoke implemented; Task 55 evaluation metrics implemented; Task 56 docking feasibility planned
+Status: Task 53 contract implemented; Task 54 deterministic fixture smoke implemented; Task 55 evaluation metrics implemented; Task 56 docking feasibility implemented
 
 ## Task 53 Sampling Contract Scope
 
 Task 53 implements only the package-interface contract in `src/covalent_design/inference/v2_sampling.py` and tests in `tests/inference/test_v2_sampling.py`.
 
-Task 53 does not execute sampling, run model forward passes, write generated complexes, export mmCIF, run docking, run evaluation, or access real data roots. Task 54 adds deterministic fixture-mode sampling smoke only. Evaluation metrics and docking feasibility remain Tasks 55 and 56.
+Task 53 does not execute sampling, run model forward passes, write generated complexes, export mmCIF, perform docking, perform evaluation, or access real data roots. Task 54 adds deterministic fixture-mode sampling smoke only. Evaluation metrics and docking feasibility remain Tasks 55 and 56.
 
 ## Task 54 Deterministic Fixture Smoke Scope
 
@@ -133,7 +133,7 @@ RDKit descriptors and simple drug-likeness reports are heavy-profile diagnostics
 
 ## Safety Filters
 
-Safety filters are limited to basic chemistry validity and rule-table compatibility in v2-beta. ADMET, toxicity, and selectivity are out of scope.
+Safety filters are limited to basic chemistry validity and rule-table compatibility in v2-beta. ADMET-style downstream safety-property claims are out of scope.
 
 ## Optional Docking Policy
 
@@ -144,11 +144,11 @@ Docking remains feasibility-only:
 - record runtime and output schema,
 - do not block v2-beta if infeasible.
 
-Task 53 records `docking_status = "not_run"` by default; it does not execute docking.
+Task 53 records `docking_status = "not_run"` by default; it does not perform docking.
 
 ## Evaluation Report
 
-Task 55 implements `build_v2_evaluation_report()` in `src/covalent_design/evaluation/v2_metrics.py` and the CLI `python -m covalent_design.evaluation.cli.v2_evaluate`. The report consumes a `V2SamplingResult` plus optional explicit fixture/evidence metadata; it does not read `D:\codex_work\data`, does not read `data/v2/`, and does not write evaluation artifacts.
+Task 55 implements `build_v2_evaluation_report()` in `src/covalent_design/evaluation/v2_metrics.py` and the CLI `python -m covalent_design.evaluation.cli.v2_evaluate`. The report consumes a `V2SamplingResult` plus optional explicit fixture/evidence metadata; it does not read approved real-data roots or local V2 data artifacts, and does not write evaluation artifacts.
 
 The report includes:
 
@@ -162,6 +162,13 @@ The report includes:
 
 Unavailable optional evidence is reported as `status: "not_evaluable"` with a reason and must not be interpreted as negative model performance. Docking remains Task 56; Task 55 records `docking_evaluation_status = "not_evaluable"` and does not choose, import, or run a docking engine.
 
+## Task 56 Docking Feasibility Gate
+
+Task 56 implements `build_v2_docking_feasibility_report()` in `src/covalent_design/evaluation/v2_docking_feasibility.py`. The report is evidence-driven: callers provide explicit engine evidence, and the module validates and serializes it deterministically. The module does not invoke a docking engine, does not create docking artifacts, does not install or download tools, and does not read real-data roots.
+
+The report records engine candidate/status, license status, install path or missing-install reason, CLI/API probe status, input/output format support, probe duration when evidence exists, and non-blocking beta-release semantics. Missing engines, unknown license status, unsupported formats, and failed probes are represented as `not_evaluable`, `license_unknown`, or `failed_probe`; none are negative model-performance results.
+
+Task 56 remains feasibility-only. A later accepted decision is required before docking can become a required beta gate or before actual docking execution is added.
 ## Verification Commands
 
 Task 53 contract verification:

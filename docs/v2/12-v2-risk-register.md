@@ -19,7 +19,7 @@ Status: hardened planning risk register
 | V2-R12 | contract | PyTorch/RDKit objects leak into public contracts | P1 | serializable project-owned contract outputs; Task 44 normalization, Task 45 scaffold/descriptor adapters all verified as passing no-raw-RDKit-object tests | 44-46 |
 | V2-R13 | scientific validity | beta results overclaimed as publication-grade | P1 | beta release review labels scope | 59 |
 | V2-R14 | pretraining | noncovalent pretraining drags beta schedule | P2 | experimental non-blocking track | 57-58 |
-| V2-R15 | docking | docking engine choice becomes blocking | P2 | feasibility-only gate | 56 |
+| V2-R15 | docking | docking engine choice becomes blocking | P2 | Task 56 implements an evidence-only feasibility report; missing engine, failed probe, unknown license, or unsupported formats remain non-blocking and do not fail v2-beta | 56 |
 | V2-R16 | governance | existing untracked governance files create noisy baseline | P2 | resolve git hygiene separately | before Task 37 if publishing |
 | V2-R17 | governance | v2 overlay docs drift from canonical ADR/spec authority | P1 | ADR 0037, `docs/v2/13-v2-task-adr-coverage.md`, and explicit sync-back rule for implemented v2 decisions | 37 and each v2 implementation task |
 | V2-R18 | data | accidental agent-managed network download of real source data | P1 | v2-beta default path forbids network download; automatic download remains future optional only | 41 |
